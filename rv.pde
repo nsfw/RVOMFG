@@ -12,6 +12,16 @@ correlation between input row/column and "strand"/"light".
 All LEDs are updated each frame, in strand/index order. 
 */
 
+#include <stdarg.h>
+void p(char *fmt, ... ){
+        char tmp[128]; // resulting string limited to 128 chars
+        va_list args;
+        va_start (args, fmt );
+        vsnprintf(tmp, 128, fmt, args);
+        va_end (args);
+        Serial.print(tmp);
+}
+
 byte debugLevel = 3;
 
 // #include "rv.h"
@@ -23,6 +33,7 @@ byte debugLevel = 3;
 
 // FRAME BUFFER
 rgb img[IMG_WIDTH][IMG_HEIGHT]={128,0,255};
+#define DEFAULT_INTENSITY 0xee
 rgb white = { 255, 255, 255 };
 rgb red = {255, 0, 0};
 rgb green = {0, 255, 0};
@@ -47,7 +58,6 @@ void setup() {
 
     Serial.print("Initializing Strands");
     initFrameBuffer(0);		// put *something* in the frame buffer
-    // sendIMGPara();
     sendIMGSerial();		// note: First time since power up, will assign addresses.
     						// If image buffer doesn't match strand config, interesting things
     						// will happen!
@@ -88,12 +98,8 @@ void initFrameBuffer(int i){
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// low level io
-///////////////////////////////////////////////////////////////////////////////
-
 void sendIMGSerial() {
-  // for all strands, one strand at a time
+    // for all strands, one strand at a time
     for (byte i=0; i<STRAND_COUNT; i++){
         strand *s = &strands[i];
         for(byte index=0; index<s->len; index++){
@@ -105,7 +111,7 @@ void sendIMGSerial() {
             if (debugLevel > 0) { Serial.print("LED at "); Serial.print((int) x);
                 Serial.print(", "); Serial.println((int) y); }
             
-            sendSingleLED(index, s->pin, pix->r, pix->g, pix->b, 0xCC);		// fullish intensity
+            sendSingleLED(index, s->pin, pix->r, pix->g, pix->b, DEFAULT_INTENSITY);		// fullish intensity
         }
     }
 }
@@ -116,7 +122,7 @@ void sendSingleLED(byte address, int pin, byte r, byte g, byte b, byte i) {
   int bitPos;
   int currentData;
 
-  makeFrame(address, r, g, b, 0xCC, streamBuffer);
+  makeFrame(address, r, g, b, DEFAULT_INTENSITY, streamBuffer);
 
   if (debugLevel > 1) {
     Serial.print("Pin: ");
@@ -212,8 +218,7 @@ void sendIMGPara(){
         // compute what index each strand should send
         for( byte j=0; j < STRAND_COUNT; j++)
             row[j] = (i < strands[j].len )? i: -1;
-        // send strand data in 
-        sendPara();		
+        composeFrame();
     }
 }
 
@@ -228,64 +233,6 @@ void sendIMGPara(){
 // Phase 1 2 3 
 // 0 =   L H H 
 // 1 =   L L H
-
-void sendPara(){
-    byte bits[STRAND_COUNT][26];
-
-    // compute bit streams for all strands
-    for (byte s=0; s<STRAND_COUNT; s++){
-        int index = row[s];
-        if (index != -1){
-            byte x = strands[s].x[index];
-            byte y = strands[s].y[index];
-            rgb *pix = &img[x][y];
-            makeFrame(index, pix->r, pix->g, pix->b, 0xCC, bits[s]);
-        }
-    }
-
-    // DBG: dump the bits for the first strand
-    Serial.print("para strand0 :");
-    dumpFrame(&bits[0][0]);
-    Serial.println("");
-
-    byte debugFlag = 0;
-    byte skipStart = 0;
-    // for each bit
-    for(byte b=0; b<27; b++){
-    	// for each phase
-        for(byte phase=skipStart; phase<4; phase++){
-            // for each strand
-            for(byte s=0; s<STRAND_COUNT; s++){
-                byte data;
-                if(row[s]==-1) break;	// nop if no data for this strand
-                if(b==26) phase=4;		// handle END OF FRAME
-                else data = bits[s][b];
-                switch (phase) {
-                case 0: // START BIT - HIGH	
-                    togglePin(strands[s].pin);
-                    break;
-                case 1: // PHASE I - LOW for BOTH 0 or 1
-                    togglePin(strands[s].pin);
-                    break;
-                case 2: // PHASE 2 - HIGH for 0
-                    if(!data) togglePin(strands[s].pin);
-                    break;
-                case 3: // PHASE 3 - HIGH for 1
-                    if(data) togglePin(strands[s].pin);
-                    break;
-                case 4: // PHASE 4 - END OF FRAME
-                    togglePin(strands[s].pin);
-                    break;
-                }
-            }
-            if(!skipStart) skipStart = 1;
-            // 1/3 bit delay 
-            delayMicroseconds(9);	// Need to time this - should make more parallel
-        }
-    }
-    delayMicroseconds(21);	// frame quiesc 30us 
-    if(debugFlag) Serial.println("");
-}
 
 void setGlobalIntensity(byte val){
     // set intensity value across all strands for all leds
@@ -327,6 +274,74 @@ void togglePin(uint8_t pin) {
         break;
     }
 };
+
+
+// Deferred I/O
+// Note: doing just portA for now
+
+#define FRAMESIZE (2+(26*3))
+byte portAframe[FRAMESIZE];	// start and stop frome + 26 bits 
+void frameSet(byte slice, byte pin){
+    byte bit = pin - 22;	// bit 0..7 is pin 22..29
+    portAframe[slice] |= (1<<bit);
+}
+
+void frameClr(byte slice, byte pin){
+    byte bit = pin - 22;	// bit 0..7 is pin 22..29
+    portAframe[slice] &= ~(1<<bit);
+}
+
+void dumpPin(byte pin){
+    byte bit = pin - 22;
+    p("\nPin %d (%d): ", pin, bit);
+    for(byte i=0; i<FRAMESIZE; i++)
+        Serial.print(portAframe[i]&(1<<bit)?"1":"0");
+    Serial.println("");
+}
+
+void composeFrame(){
+    // take your time and figure out what you want to say!
+    byte buffer[26];
+    // collect bit streams for ALL strands
+    for (byte s=0; s<STRAND_COUNT; s++){
+        int index = row[s];
+        if (index != -1){
+            byte x = strands[s].x[index];
+            byte y = strands[s].y[index];
+            rgb *pix = &img[x][y];
+            makeFrame(index, pix->r, pix->g, pix->b, DEFAULT_INTENSITY, buffer);
+            deferredSendFrame(strands[s].pin, buffer);
+        }
+    }
+    sendFrame();
+}
+
+void deferredSendFrame(byte pin, byte *buffer){
+    byte slice = 0;
+    // buffer is 26bit frame
+    frameSet(slice++,pin);	// start bit
+    for(byte i=0; i<26; i++){
+        if(buffer[i]){	// send a 1 : L L H
+            frameClr(slice++, pin);
+            frameClr(slice++, pin);
+            frameSet(slice++, pin);
+        } else {		// send a 0: L H H
+            frameClr(slice++, pin);
+            frameSet(slice++, pin);
+            frameSet(slice++, pin);
+        }
+    }
+    frameClr(slice++,pin);	// back to LOW inter frame
+}
+
+void sendFrame(){
+    // Say it in one precise parallel blast
+    for(byte i = 0; i<FRAMESIZE; i++){
+        PORTA = portAframe[i];
+        delayMicroseconds(10);
+    }
+    delayMicroseconds(20);	// 30us quiesce
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // debug utils
