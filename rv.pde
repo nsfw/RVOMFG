@@ -22,13 +22,10 @@ void p(char *fmt, ... ){
         Serial.print(tmp);
 }
 
-byte debugLevel = 3;
+byte debugLevel = 0;
 
-// #include "rv.h"
-// Note: data structure allocates space for all strands to have same longest length - this could be modified to
-// only allocate space required for actual number of LEDS
-
-// #include "conf1led.h"
+// include appropriate configuration
+// #include "conf1led.h"	// 1 LED useful for debugging
 #include "conf4x2.h"
 
 // FRAME BUFFER
