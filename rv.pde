@@ -68,19 +68,16 @@ void setup() {
 
 void loop(){
     static int i=0;
-    static byte bright=DEFAULT_INTENSITY;
+    static float bright=1.0;
     int dir=-1;
 
     if(i>64){
-        if(i==65){
-            bright=DEFAULT_INTENSITY;
-            dir=-1;
-        }
-        setGlobalIntensity((byte) bright+dir);
-        if(bright==10) dir=1;
-        if(bright==220) dir=-1;
-        delay(1);
-        if(i>4000) i=0;
+        bright = 0.5 + (0.35 *sin(i/20.0));
+        brightness(bright);
+        initFrameBuffer(i>>5);
+        sendIMGPara();
+        // delay(20);
+        if(i>2000) i=0;
     } else {
         // do something wth IMAGE HERE
         initFrameBuffer(i);
@@ -332,6 +329,14 @@ void dumpPin(byte pin){
     Serial.println("");
 }
 
+byte imgBright=DEFAULT_INTENSITY;
+
+void brightness(float bright){
+    bright = max(0.0, bright);
+    bright = min(1.0, bright);
+    imgBright = (float)255.0*bright;
+}
+
 void composeFrame(){
     // take your time and figure out what you want to say!
     byte buffer[26];
@@ -342,7 +347,7 @@ void composeFrame(){
             byte x = strands[s].x[index];
             byte y = strands[s].y[index];
             rgb *pix = &img[x][y];
-            makeFrame(index, pix->r, pix->g, pix->b, DEFAULT_INTENSITY, buffer);
+            makeFrame(index, pix->r, pix->g, pix->b, imgBright, buffer);
             deferredSendFrame(strands[s].pin, buffer);
         }
     }

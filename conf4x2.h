@@ -25,5 +25,5 @@ typedef struct a_strand {
 strand strands[]={
 // len, pin, {x-coords}{y-coords}, initial color
     { 4, 22, {0,1,2,3}, {0,0,0,0}},
-    { 4, 24, {0,1,2,3}, {1,1,1,1}}
+    { 4, 36, {0,1,2,3}, {1,1,1,1}}
 };
