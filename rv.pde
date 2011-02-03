@@ -56,8 +56,9 @@ void setup() {
   
     delay(1000);
 
-    Serial.print("Initializing Strands");
     initFrameBuffer(0);		// put *something* in the frame buffer
+
+    Serial.print("Initializing Strands");
     sendIMGSerial();		// note: First time since power up, will assign addresses.
     						// If image buffer doesn't match strand config, interesting things
     						// will happen!
@@ -66,16 +67,25 @@ void setup() {
 }
 
 void loop(){
-    static int i=0;
-    // setGlobalIntensity((i%128)+100);
-    // do something wth IMAGE HERE
-    initFrameBuffer(i);
+    int i=0;
+    byte bright=DEFAULT_INTENSITY;
+    byte dir=-1;
 
-    // Serial.print(i);
-    // sendIMGSerial();
-    sendIMGPara();
-
-    delay(500);
+    if(i>64){
+        if(i==65){
+            bright=DEFAULT_INTENSITY;
+            dir=-1;
+        }
+        setGlobalIntensity(bright+dir);
+        if(bright==0) dir=1;
+        delay(1);
+        if(i>4000) i=0;
+    } else {
+        // do something wth IMAGE HERE
+        initFrameBuffer(i);
+        sendIMGPara();
+        delay(200);
+    }
     i++;
 };
 
@@ -85,9 +95,6 @@ void loop(){
 ///////////////////////////////////////////////////////////////////////////////
 
 void initFrameBuffer(int i){
-    Serial.print("+");
-    Serial.print(i);
-
     // just stick some pattern in it for now
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
@@ -122,7 +129,7 @@ void sendSingleLED(byte address, int pin, byte r, byte g, byte b, byte i) {
   int bitPos;
   int currentData;
 
-  makeFrame(address, r, g, b, DEFAULT_INTENSITY, streamBuffer);
+  makeFrame(address, r, g, b, i, streamBuffer);
 
   if (debugLevel > 1) {
     Serial.print("Pin: ");
@@ -174,31 +181,31 @@ void dumpFrame(byte *buffer){
 void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
 // sfw: check that this is using the 4 MSBs of colors
 
-  int bufferPos = 0;
-  int bitPos;
-  int data;
+    int bufferPos = 0;
+    int bitPos;
+    int data;
 
-  while (bufferPos < 26) {
-    switch (bufferPos) {
-      case 0:
-        bitPos = 6;
-        data = index;
-        break;
+    while (bufferPos < 26) {
+        switch (bufferPos) {
+        case 0:
+            bitPos = 6;
+            data = index;
+            break;
       case 6:
         bitPos = 8;
         data = i;	
         break;
       case 14:
         bitPos = 4;
-        data = b;
+        data = b>>4;
         break;
       case 18:
         bitPos = 4;
-        data = g;
+        data = g>>4;
         break;
       case 22:
         bitPos = 4;
-        data = r;
+        data = r>>4;
         break;
       default:
         break;
@@ -222,6 +229,16 @@ void sendIMGPara(){
     }
 }
 
+void setGlobalIntensity(byte val){
+    byte buffer[26];
+    makeFrame(0xff, 0x80,0x80,0x00, val, buffer);
+    // collect bit streams for ALL strands
+    for (byte s=0; s<STRAND_COUNT; s++)
+        deferredSendFrame(strands[s].pin, buffer);
+    sendFrame();
+}
+
+
 // Serial Protocol:
 //
 // Idle bus state: Low
@@ -234,62 +251,77 @@ void sendIMGPara(){
 // 0 =   L H H 
 // 1 =   L L H
 
-void setGlobalIntensity(byte val){
-    // set intensity value across all strands for all leds
-    for(byte s=0; s<STRAND_COUNT; s++)
-        sendSingleLED(63,			// broadcast intensity
-                      strands[s].pin,
-                      0, 0, 0,		// ignores rgb
-                      val);		
+
+void setPin(byte pin){
+    if(pin<30) PORTA |= (1<<(pin-22));
+    else PORTC |= (1<<(pin-22));
 }
-
-void togglePin(uint8_t pin) {
-    // sfw: not thrilled with this... 
-    switch(pin) {
-      case 22:
-        PORTA = (PORTA ^ B00000001);
-        break;
-      case 23:
-        PORTA = (PORTA ^ B00000010);
-        break;
-      case 24:
-        PORTA = (PORTA ^ B00000100);
-        break;
-      case 25:
-        PORTA = (PORTA ^ B00001000);
-        break;
-      case 26:
-        PORTA = (PORTA ^ B00010000);
-        break;
-      case 27:
-        PORTA = (PORTA ^ B00100000);
-        break;
-      case 28:
-        PORTA = (PORTA ^ B01000000);
-        break;
-      case 29:
-        PORTA = (PORTA ^ B10000000);
-        break;
-      default:
-        break;
-    }
-};
-
+void clrPin(byte pin){
+    if(pin<30) PORTA &= ~(1<<(pin-22));
+    else PORTC &= ~(1<<(pin-22));
+}
+void togglePin(byte pin){
+    if(pin<30) PORTA ^= (1<<(pin-22));
+    else PORTC ^= (1<<(pin-22));
+}
 
 // Deferred I/O
 // Note: doing just portA for now
 
 #define FRAMESIZE (2+(26*3))
+// pins 22-29
 byte portAframe[FRAMESIZE];	// start and stop frome + 26 bits 
+byte portAmask=0;			// remember what pins are being set
+// pins 30-37 
+byte portCframe[FRAMESIZE];	
+byte portCmask=0;			
+
+char port=0;	// 'a', 'c', etc.
+byte pinmask;	// pin as bit mask (e.g. 22 = 0x01, 23 = 0x02...)
+
+char computePortAndMask(byte pin){
+    if(22 <= pin && pin <= 30){
+        port = 'a';
+        pinmask = (1<<(pin-22));
+        portAmask |= pinmask;	// remember we're using this output pin
+    } else if(30 <= pin && pin <= 38){
+        port = 'c';
+        pinmask = (0x80>>(pin-30));	// bit 0 = pin 37
+        portCmask |= pinmask;	// remember we're using this output pin
+    }
+}
+
 void frameSet(byte slice, byte pin){
-    byte bit = pin - 22;	// bit 0..7 is pin 22..29
-    portAframe[slice] |= (1<<bit);
+    computePortAndMask(pin);
+    switch(port){
+    case 'a':
+        portAframe[slice] |= pinmask; break;
+    case 'c':
+        portCframe[slice] |= pinmask; break;
+    }
 }
 
 void frameClr(byte slice, byte pin){
-    byte bit = pin - 22;	// bit 0..7 is pin 22..29
-    portAframe[slice] &= ~(1<<bit);
+    computePortAndMask(pin);
+    switch(port){
+    case 'a':
+        portAframe[slice] &= ~pinmask; break;
+    case 'c':
+        portCframe[slice] &= ~pinmask; break;
+    }
 }
+
+// void frameSet(byte slice, byte pin){
+//     byte bit = pin - 22;	// bit 0..7 is pin 22..29
+//     portAframe[slice] |= (1<<bit);
+//     portAmask |= (1<<bit);
+// }
+
+// void frameClr(byte slice, byte pin){
+//     byte bit = pin - 22;	// bit 0..7 is pin 22..29
+//     portAframe[slice] &= ~(1<<bit);
+//     portAmask |= (1<<bit);
+// }
 
 void dumpPin(byte pin){
     byte bit = pin - 22;
@@ -337,7 +369,8 @@ void deferredSendFrame(byte pin, byte *buffer){
 void sendFrame(){
     // Say it in one precise parallel blast
     for(byte i = 0; i<FRAMESIZE; i++){
-        PORTA = portAframe[i];
+        PORTA = (PORTA & ~portAmask) | (portAframe[i] & portAmask);	// selectively set bits
+        PORTC = (PORTC & ~portCmask) | (portCframe[i] & portCmask);	// selectively set bits
         delayMicroseconds(10);
     }
     delayMicroseconds(20);	// 30us quiesce
