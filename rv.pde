@@ -67,17 +67,18 @@ void setup() {
 }
 
 void loop(){
-    int i=0;
-    byte bright=DEFAULT_INTENSITY;
-    byte dir=-1;
+    static int i=0;
+    static byte bright=DEFAULT_INTENSITY;
+    int dir=-1;
 
     if(i>64){
         if(i==65){
             bright=DEFAULT_INTENSITY;
             dir=-1;
         }
-        setGlobalIntensity(bright+dir);
-        if(bright==0) dir=1;
+        setGlobalIntensity((byte) bright+dir);
+        if(bright==10) dir=1;
+        if(bright==220) dir=-1;
         delay(1);
         if(i>4000) i=0;
     } else {
