@@ -6,24 +6,11 @@
 #define IMG_WIDTH 4
 #define IMG_HEIGHT 2
 ///////////////////////////////////////////////////////////////////////////////
+#include "rv.h"
 
-struct rgb {
-  byte r;
-  byte g;
-  byte b;
-};
-
-typedef struct a_strand {
-    byte len;		// length of this strand
-    byte pin;		// digital out pin associated w/ this strand
-    byte x[MAX_STRAND_LEN];		// source X and Y from Image
-    byte y[MAX_STRAND_LEN];
-} strand;
-
-// #include "strandConfig.h"
-
+#define conf4x2 1
 strand strands[]={
-// len, pin, {x-coords}{y-coords}, initial color
-    { 4, 22, {0,1,2,3}, {0,0,0,0}},
+// len, pin, {x-coords}{y-coords}
+    { 4, 22, {0,1,2,3}, {0,0,0,0}},		// i.e. on strand #0 / pin 22, there are 4 LEDs @0,0 1,0 2,0 3,0 ...
     { 4, 36, {0,1,2,3}, {1,1,1,1}}
 };

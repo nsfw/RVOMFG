@@ -12,29 +12,30 @@ correlation between input row/column and "strand"/"light".
 All LEDs are updated each frame, in strand/index order. 
 */
 
-#include <stdarg.h>
-void p(char *fmt, ... ){
-        char tmp[128]; // resulting string limited to 128 chars
-        va_list args;
-        va_start (args, fmt );
-        vsnprintf(tmp, 128, fmt, args);
-        va_end (args);
-        Serial.print(tmp);
-}
-
 byte debugLevel = 0;
 
+///////////////////////////////////////////////////////////////////////////////
 // include appropriate configuration
+///////////////////////////////////////////////////////////////////////////////
 // #include "conf1led.h"	// 1 LED useful for debugging
-#include "conf4x2.h"
+// #include "conf4x2.h"		// 4x2 matrix
+
+// Remember - we're talking ROWS and COLUMNS
+#include "conf9x10.h"		// initial two strings on RV
+#include "test9x10.h"		// concentric circles
 
 // FRAME BUFFER
-rgb img[IMG_WIDTH][IMG_HEIGHT]={128,0,255};
+rgb img[IMG_HEIGHT][IMG_WIDTH]={128,0,255};
 #define DEFAULT_INTENSITY 0xee
 rgb white = { 255, 255, 255 };
 rgb red = {255, 0, 0};
 rgb green = {0, 255, 0};
 rgb blue = {0,0,255};
+
+// animated colors
+rgb c1 = {255,0,0};
+rgb c2 = {0,255,0};
+rgb c3 = {0,0,255};
 
 void setup() {
     Serial.begin(9600);
@@ -77,8 +78,9 @@ void loop(){
         if(i>2000) i=0;
     } else {
         // do something wth IMAGE HERE
-        initFrameBuffer(i);
+        initFrameBuffer(i>>3);
         sendIMGPara();
+        // sendIMGSerial();
         delay(200);
     }
     i++;
@@ -89,93 +91,66 @@ void loop(){
 // Library
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef conf4x2
+
 void initFrameBuffer(int i){
     // just stick some pattern in it for now
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
             i = i%3;
-            img[x][y]= (i==0)?red:((i==1)?blue:green);
+            img[y][x]= (i==0)?red:((i==1)?blue:green);
             i++;
         }
     }
 }
 
+#endif
+#ifdef conf9x10
+void initFrameBuffer(int i){
+    // just stick some pattern in it for now
+    for(byte x=0; x<IMG_WIDTH; x++){
+        for(byte y=0; y<IMG_HEIGHT; y++){
+            i = ((test9x10[y][x]+i)-1)%3;
+            img[y][x]= (i==0)?c1:((i==1)?c2:c3);
+        }
+    }
+}
+#endif
+
+
+byte imgBright=DEFAULT_INTENSITY;
+
+void brightness(float bright){
+    bright = max(0.0, bright);
+    bright = min(1.0, bright);
+    imgBright = (float)255.0*bright;
+}
+
 void sendIMGSerial() {
     // for all strands, one strand at a time
+    // Also useful for initial addressing
     for (byte i=0; i<STRAND_COUNT; i++){
         strand *s = &strands[i];
         for(byte index=0; index<s->len; index++){
             // for all leds on strand
             byte x = s->x[index];
             byte y = s->y[index];
-            rgb *pix = &img[x][y];
+            rgb *pix = &img[y][x];
 
-            if (debugLevel > 0) { Serial.print("LED at "); Serial.print((int) x);
-                Serial.print(", "); Serial.println((int) y); }
-            
-            sendSingleLED(index, s->pin, pix->r, pix->g, pix->b, DEFAULT_INTENSITY);		// fullish intensity
+            sendSingleLED(index, s->pin, pix->r, pix->g, pix->b, imgBright);
         }
     }
 }
 
 void sendSingleLED(byte address, int pin, byte r, byte g, byte b, byte i) {
-  boolean streamBuffer[26];
-  int streamPos = 0;
-  int bitPos;
-  int currentData;
-
-  makeFrame(address, r, g, b, i, streamBuffer);
-
-  if (debugLevel > 1) {
-    Serial.print("Pin: ");
-    Serial.print(pin);
-    Serial.print("    Address: ");
-    Serial.print((int) address);
-    Serial.print("    Intensity: ");
-    Serial.print((int) i);
-    Serial.print("    Blue: ");
-    Serial.print((int) b);
-    Serial.print("    Green: ");
-    Serial.print((int) g);
-    Serial.print("    Red: ");
-    Serial.println((int) r);
-    dumpFrame(streamBuffer);
-    Serial.println();
-    Serial.println();
-  }
-
-  // send start bit 
-  togglePin(pin);			// HIGH FOR 8us
-  delayMicroseconds(8);
-  streamPos = 0;
-  while (streamPos < 26) {
-      if (streamBuffer[streamPos]) {
-          //send a 1
-          togglePin(pin);	// LOW for 19us
-          delayMicroseconds(19);
-          togglePin(pin);	// HIGH for 8us
-          delayMicroseconds(8);	
-      } else {
-          //send a 0
-          togglePin(pin);	// LOW for 9us
-          delayMicroseconds(9);
-          togglePin(pin);	// HIGH for 18us
-          delayMicroseconds(18);
-    }
-    streamPos++;
-  }
-  togglePin(pin);			// LOW
-  delayMicroseconds(30);	// frame quiesce
+    byte buffer[26];
+    makeFrame(address, r, g, b, i, buffer);
+    deferredSendFrame(pin, buffer);
+    sendFrame();
 }
 
-void dumpFrame(byte *buffer){
-    Serial.print("frame: ");
-    for(byte i = 0; i < 26; i++) Serial.print((int) buffer[i]);
-}
 
 void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
-// sfw: check that this is using the 4 MSBs of colors
-
     int bufferPos = 0;
     int bitPos;
     int data;
@@ -260,9 +235,9 @@ void togglePin(byte pin){
     else PORTC ^= (1<<(pin-22));
 }
 
+///////////////////////////////////////////////////////////////////////////////
 // Deferred I/O
-// Note: doing just portA for now
-
+///////////////////////////////////////////////////////////////////////////////
 #define FRAMESIZE (2+(26*3))
 // pins 22-29
 byte portAframe[FRAMESIZE];	// start and stop frome + 26 bits 
@@ -306,34 +281,6 @@ void frameClr(byte slice, byte pin){
     }
 }
 
-// void frameSet(byte slice, byte pin){
-//     byte bit = pin - 22;	// bit 0..7 is pin 22..29
-//     portAframe[slice] |= (1<<bit);
-//     portAmask |= (1<<bit);
-// }
-
-// void frameClr(byte slice, byte pin){
-//     byte bit = pin - 22;	// bit 0..7 is pin 22..29
-//     portAframe[slice] &= ~(1<<bit);
-//     portAmask |= (1<<bit);
-// }
-
-void dumpPin(byte pin){
-    byte bit = pin - 22;
-    p("\nPin %d (%d): ", pin, bit);
-    for(byte i=0; i<FRAMESIZE; i++)
-        Serial.print(portAframe[i]&(1<<bit)?"1":"0");
-    Serial.println("");
-}
-
-byte imgBright=DEFAULT_INTENSITY;
-
-void brightness(float bright){
-    bright = max(0.0, bright);
-    bright = min(1.0, bright);
-    imgBright = (float)255.0*bright;
-}
-
 void composeFrame(){
     // take your time and figure out what you want to say!
     byte buffer[26];
@@ -343,7 +290,7 @@ void composeFrame(){
         if (index != -1){
             byte x = strands[s].x[index];
             byte y = strands[s].y[index];
-            rgb *pix = &img[x][y];
+            rgb *pix = &img[y][x];
             makeFrame(index, pix->r, pix->g, pix->b, imgBright, buffer);
             deferredSendFrame(strands[s].pin, buffer);
         }
@@ -382,6 +329,15 @@ void sendFrame(){
 ///////////////////////////////////////////////////////////////////////////////
 // debug utils
 ///////////////////////////////////////////////////////////////////////////////
+#include <stdarg.h>
+void p(char *fmt, ... ){
+        char tmp[128]; // resulting string limited to 128 chars
+        va_list args;
+        va_start (args, fmt );
+        vsnprintf(tmp, 128, fmt, args);
+        va_end (args);
+        Serial.print(tmp);
+}
 
 #include <avr/pgmspace.h>
 static void	dumpHex(void * startAddress, char* name, unsigned lines){
@@ -422,3 +378,7 @@ static void	dumpHex(void * startAddress, char* name, unsigned lines){
 	}
 }
 
+void dumpFrame(byte *buffer){
+    Serial.print("frame: ");
+    for(byte i = 0; i < 26; i++) Serial.print((int) buffer[i]);
+}
