@@ -1,0 +1,85 @@
+#include <Ethernet.h>
+
+#include <ArdOSC.h>
+
+
+byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte myIp[]  = { 192, 168, 0, 10 };
+int  serverPort  = 10000;
+
+int destPort=12000;
+  
+OSCServer server;
+OSCClient client;
+
+OSCMessage *rcvMes;
+
+void setup(){ 
+  
+// Serial.begin(19200);
+ 
+ Ethernet.begin(myMac ,myIp); 
+ 
+ server.sockOpen(serverPort);
+   
+}
+  
+void loop(){
+
+ if(server.available()){
+   
+  rcvMes=server.getMessage();
+                               //送信元IPはrcvMes.ipAddressポインタに格納されている。
+  rcvMes->portNumber=destPort;
+  
+  client.send(rcvMes);
+
+//  logMessage();
+   
+ }    
+}
+  
+  
+void logMessage(){
+    uint16_t i;
+
+    
+    Serial.print(rcvMes->ipAddress[0],DEC);
+    Serial.print(".");
+    Serial.print(rcvMes->ipAddress[1],DEC);
+    Serial.print(".");
+    Serial.print(rcvMes->ipAddress[2],DEC);
+    Serial.print(".");
+    Serial.print(rcvMes->ipAddress[3],DEC);
+    Serial.print(":");
+    Serial.print(rcvMes->portNumber,DEC);
+    Serial.print(" ");
+    Serial.print(rcvMes->oscAddress);
+    Serial.print(" ");
+    Serial.print(rcvMes->typeTag);
+    Serial.print("--");
+    
+    for(i=0 ; i<rcvMes->argsNum; i++){
+     switch( rcvMes->getTypeTag(i)){
+      
+        case 'i':
+          Serial.print(rcvMes->getInteger32(i));
+          Serial.print(" ");
+         break; 
+         
+        case 'f':
+          Serial.print(rcvMes->getFloat(i));
+          Serial.print(" ");
+         break; 
+        
+         case 's':
+          Serial.print(rcvMes->getString(i));
+          Serial.print(" ");
+         break; 
+       
+     }
+    
+      
+    }
+     Serial.println("");
+}
