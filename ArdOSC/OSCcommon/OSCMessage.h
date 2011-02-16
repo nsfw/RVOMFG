@@ -90,8 +90,12 @@ public:
 #ifdef _USE_STRING_
 	char   *getString(uint16_t _index);
 #endif
-	
-	
+
+#ifdef _USE_BLOB_
+    OSCBlob *getBlob(uint16_t _index) {
+        return (OSCBlob *) arguments[_index];
+    }
+#endif
 	
 	friend class OSCServer;
 	friend class OSCClient;
@@ -99,6 +103,13 @@ public:
 	friend class OSCEncoder;
 	
 };
+
+#ifdef _USE_BLOB_
+class OSCBlob {
+    uint32_t	len;
+    uint8_t		data;	// start of data
+};
+#endif
 
 
 #endif

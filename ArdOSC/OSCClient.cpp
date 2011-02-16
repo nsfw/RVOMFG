@@ -15,39 +15,26 @@
 #include <stdlib.h>
 
 #include "OSCCommon/OSCClient.h"
-
-
-
-extern "C" {
- 
- #include "../../libraries/Ethernet/utility/types.h"
- #include "../../libraries/Ethernet/utility/socket.h"
- #include "../../libraries/Ethernet/utility/spi.h"
- #include "../../libraries/Ethernet/utility/w5100.h"
- 
-}
- 
-#include "../../libraries/Ethernet/Ethernet.h"
- 
 #include "OSCcommon/OSCEncoder.h"
 
-
+#include <SPI.h>
+#include <Client.h>
+#include <Udp.h>
+#include <utility/w5100.h>
+#include <utility/socket.h>
 
 OSCClient::OSCClient(){
-	
 //	sockOpen();
-	
 }
+
 OSCClient::~OSCClient(){
 //	sockClose();
 }
 
 
-
 void OSCClient::sockOpen(){
-		
 	socketNo = 0;
-	socket(socketNo, Sn_MR_UDP, kDummyPortNumber, 0);
+	socket(socketNo, SnMR::UDP, kDummyPortNumber, 0);
 	DBG_LOGLN("open UDP socket");
 }
 

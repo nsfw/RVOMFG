@@ -1,35 +1,29 @@
+#include <SPI.h>
+#include <Client.h>
 #include <Ethernet.h>
+#include <Server.h>
+#include <Udp.h>
 
 #include <ArdOSC.h>
-
 
 byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte myIp[]  = { 192, 168, 0, 10 };
 int  serverPort  = 10000;
-
   
 OSCServer server;
 
 OSCMessage *rcvMes;
 
 void setup(){ 
-  
- Serial.begin(19200);
- 
- Ethernet.begin(myMac ,myIp); 
- 
- server.sockOpen(serverPort);
-   
+    Serial.begin(19200);
+    Ethernet.begin(myMac ,myIp); 
+    server.sockOpen(serverPort);
 }
   
 void loop(){
-
  if(server.available()){
-   
   rcvMes=server.getMessage();
-
   logMessage();
-   
  }    
 }
   

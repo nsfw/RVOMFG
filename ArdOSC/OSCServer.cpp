@@ -17,24 +17,16 @@
 #include <stdlib.h>
 
 #include "OSCCommon/OSCServer.h"
-
-extern "C" {
- 
- #include "../../libraries/Ethernet/utility/types.h"
- #include "../../libraries/Ethernet/utility/socket.h"
- #include "../../libraries/Ethernet/utility/spi.h"
- #include "../../libraries/Ethernet/utility/w5100.h"
- 
-}
- 
-#include "../../libraries/Ethernet/Ethernet.h"
- 
-
+#include <SPI.h>
+#include <Client.h>
+#include <Udp.h>
+#include <utility/w5100.h>
+#include <utility/socket.h>
 
 
 void OSCServer::sockOpen(uint16_t _recievePort){
 	socketNo=1;
-	socket( socketNo ,Sn_MR_UDP ,_recievePort ,0);
+	socket( socketNo ,SnMR::UDP ,_recievePort ,0);
 	availableFlush();
 	message.flush();
 	
@@ -54,9 +46,12 @@ void OSCServer::sockClose(){
 
 bool OSCServer::available(){
 	
-	if( ( getSn_IR(socketNo) && Sn_IR_RECV ) ) {
-		
-		if( getSn_RX_RSR(socketNo) > 0 ){
+//was:
+//	if( ( getSn_IR(socketNo) && SnIR::RECV ) ) {
+//		if( getSn_RX_RSR(socketNo) > 0 ){
+
+    if( W5100.readSnIR(socketNo) && SnIR::RECV ){
+        if( W5100.readSnRX_RSR(socketNo) > 0){
 			
 			if(decodeProcess()==0)  return 1;
 			
@@ -75,10 +70,8 @@ int16_t OSCServer::decodeProcess(){
 	DBG_LOGLN("decodeProcess");
 	message.flush();
 	
-	
-	
-	IINCHIP_WRITE( Sn_IR(socketNo) ,Sn_IR_RECV );
-	
+	// 	was: IINCHIP_WRITE( Sn_IR(socketNo), SnIR::RECV );
+    W5100.writeSnIR(socketNo, SnIR::RECV);
 	message.allPackSize=recvfrom(socketNo
 					 ,rcvData
 					 ,1 

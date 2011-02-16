@@ -118,7 +118,7 @@ int16_t OSCDecoder::decode( OSCMessage::OSCMessage *mes ,const uint8_t *recData 
             // To minimize memory usage and maximize speed, we DO NOT COPY THE
             // RECEIVED BLOB. Message data is only good prior to "flushing".
             // Further, we just point at the packed data.
-            mes->arguments[i]=packStartPtr;
+            mes->arguments[i]= (OSCBlob *) packStartPtr;
             tmpSize = 4 + mes->getPackSize(*(uint32_t *) packStartPtr);
             packStartPtr += tmpSize;
             mes->argsPacSize += tmpSize;
@@ -126,7 +126,7 @@ int16_t OSCDecoder::decode( OSCMessage::OSCMessage *mes ,const uint8_t *recData 
         break;
 #endif
         
+        }
     }
-    
     return 0;
 }

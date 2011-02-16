@@ -12,6 +12,13 @@ correlation between input row/column and "strand"/"light".
 All LEDs are updated each frame, in strand/index order. 
 */
 
+// Ethernet Support
+#include <SPI.h>
+#include <Client.h>
+#include <Ethernet.h>
+#include <Server.h>
+#include <Udp.h>
+
 byte debugLevel = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -23,6 +30,11 @@ byte debugLevel = 0;
 // Remember - we're talking ROWS and COLUMNS
 #include "conf9x10.h"		// initial two strings on RV
 #include "test9x10.h"		// concentric circles
+
+// Ethernet
+byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte myIp[]  = { 192, 168, 69, 100 };
+int  serverPort  = 10000;
 
 // FRAME BUFFER
 rgb img[IMG_HEIGHT][IMG_WIDTH]={128,0,255};
@@ -40,6 +52,7 @@ rgb c3 = {0,0,255};
 void setup() {
     Serial.begin(9600);
     Serial.println("Device Start");
+    Ethernet.begin(myMac ,myIp); 
     int i = 0;
     while (i < STRAND_COUNT) {
         pinMode(strands[i].pin, OUTPUT);
