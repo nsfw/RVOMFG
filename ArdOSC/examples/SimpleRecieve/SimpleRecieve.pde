@@ -6,16 +6,21 @@
 
 #include <ArdOSC.h>
 
-byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-byte myIp[]  = { 192, 168, 0, 10 };
-int  serverPort  = 10000;
+// --CONFIG-- MODIFIY THIS FOR YOUR SETUP
+byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFF, 0xFE };
+byte myIp[]  = { 198, 178, 187, 122 };
+int  serverPort  = 9999;
+// --CONFIG--
   
 OSCServer server;
 
 OSCMessage *rcvMes;
 
 void setup(){ 
-    Serial.begin(19200);
+    Serial.begin(9600);
+    delay(500);
+    Serial.println("Hello! ");
+    DBG_LOGLN("DEBUG MODE");
     Ethernet.begin(myMac ,myIp); 
     server.sockOpen(serverPort);
 }
@@ -78,6 +83,13 @@ void logMessage(){
           Serial.print(stringValue);
           Serial.print(" ");
          break; 
+
+         case 'b':
+          Serial.print("BLOB[");
+          OSCBlob *b = rcvMes->getBlob(i);
+          Serial.print(b->len);
+          Serial.print("] ");
+          break;          
        
      }
     
