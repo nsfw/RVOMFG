@@ -19,27 +19,22 @@
 
 //======== user define ==============
 
-//#define _DEBUG_
-
 #define _USE_FLOAT_
 #define _USE_STRING_
+#define _USE_BLOB_
 
-
-
-//======== user define  end  ========
+//======== application maximums =====
 
 #define kMaxAugument	16
-
-#define kMaxRecieveData	100
+#define kMaxRecieveData	4096
 #define kMaxOSCAdrCharactor	255
 #define kMaxStringCharactor	255
 
-
+//======== user define  end  ========
 
 extern "C" {
 #include <inttypes.h>
 }
-
 
 #ifdef _DEBUG_
 #include "HardwareSerial.h"
