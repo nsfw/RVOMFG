@@ -1,5 +1,7 @@
 for Arduino firmware 0018
 
+Note: Does not handle BUNDLES
+
 Installation
 ArdOSC folder into ..
 
@@ -19,6 +21,8 @@ http://www.arduino.cc/en/Hacking/Libraries
  
  This library works with arduino firmware0018.
  
+ 2011/02/15 version 2.0.sfw - updated to work w/ new Ethernet Libraries
+                            - added support for Blobs (rx only currently)
  2010/02/01 version 2.0 changed Project OSCClass -> ArdOSC
  2009/03/22 version 1.0.1 add errror process。change Doc.
  2009/03/21 version 1.0.0
