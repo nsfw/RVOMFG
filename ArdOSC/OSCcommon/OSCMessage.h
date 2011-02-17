@@ -18,9 +18,17 @@
 #ifndef OSCMessage_h
 #define OSCMessage_h
 
+// Note: A different approach to all this calloc() stuff would be to just create
+// accessors that unpack the data on the fly, so there's no work done until the
+// data is accessed. Conversely, the "setters" would handle packing
+// the data into an OSC message.
 
-//#include "OSCcommon.h"
-
+#ifdef _USE_BLOB_
+struct OSCBlob {
+    uint32_t		len;
+    const uint8_t	*data;			// points into raw message
+};
+#endif
 
 class OSCMessage{
 	
@@ -58,8 +66,6 @@ public:
 	uint16_t getStrPackSize(const char* data);
 	uint16_t getPackSize(uint16_t size);
 	
-	
-	
 	void setAddress(uint8_t *_ip , uint16_t _port);
 	
 	void setIpAddress( uint8_t *_ip );		
@@ -94,7 +100,7 @@ public:
 #ifdef _USE_BLOB_
     OSCBlob *getBlob(uint16_t _index) {
         return (OSCBlob *) arguments[_index];
-    }
+    };
 #endif
 	
 	friend class OSCServer;
@@ -104,12 +110,6 @@ public:
 	
 };
 
-#ifdef _USE_BLOB_
-class OSCBlob {
-    uint32_t	len;
-    uint8_t		data;	// start of data
-};
-#endif
 
 
 #endif
