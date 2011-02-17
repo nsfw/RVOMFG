@@ -18,11 +18,8 @@
 #include "OSCcommon/OSCcommon.h"
 #include "OSCcommon/OSCDecoder.h"
 
-
-
 int16_t OSCDecoder::decode( OSCMessage::OSCMessage *mes ,const uint8_t *recData ){
     
-	
 //===========  BIN -> OSC Address(String) Decode   ===========
 	
 	const uint8_t *packStartPtr=recData;
@@ -114,14 +111,26 @@ int16_t OSCDecoder::decode( OSCMessage::OSCMessage *mes ,const uint8_t *recData 
             
 #ifdef _USE_BLOB_
         case 'b':
-            // Note:
-            // To minimize memory usage and maximize speed, we DO NOT COPY THE
-            // RECEIVED BLOB. Message data is only good prior to "flushing".
-            // Further, we just point at the packed data.
-            mes->arguments[i]= (OSCBlob *) packStartPtr;
-            tmpSize = 4 + mes->getPackSize(*(uint32_t *) packStartPtr);
-            packStartPtr += tmpSize;
-            mes->argsPacSize += tmpSize;
+            // Note: To minimize memory usage and maximize speed, we
+            // DO NOT COPY THE RECEIVED BLOB. Message data is only
+            // good prior to "flushing".
+
+            OSCBlob * p = (OSCBlob *) calloc(sizeof(OSCBlob),1);
+            mes->arguments[i]=p;
+
+            tmpPtr=(uint8_t*) &p->len;		// unpack bigendian size
+
+            *(tmpPtr+3)=*(uint8_t*)packStartPtr++;
+            *(tmpPtr+2)=*(uint8_t*)packStartPtr++;
+            *(tmpPtr+1)=*(uint8_t*)packStartPtr++;
+            *tmpPtr=    *(uint8_t*)packStartPtr++;
+            p->data = packStartPtr;
+            
+            packStartPtr += mes->getPackSize(p->len);		// round up to 32bit boundrytmpSize;
+            mes->argsPacSize += mes->getPackSize(p->len);
+
+            // Serial.print("BLOBSIZE");
+            // Serial.println(tmpSize);
 		
         break;
 #endif
