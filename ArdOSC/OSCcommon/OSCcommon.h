@@ -23,9 +23,11 @@
 #define _USE_STRING_
 #define _USE_BLOB_
 
+// Note: MaxReceiveData should be a function of the values setup in W5100.h
+
 //======== application maximums =====
 
-#define kMaxAugument	16
+#define kMaxArgument	16
 #define kMaxRecieveData	4096
 #define kMaxOSCAdrCharactor	255
 #define kMaxStringCharactor	255
