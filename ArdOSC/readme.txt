@@ -1,5 +1,9 @@
 for Arduino firmware 0018
 
+Note: Rx / Tx Buffer sizes are set in W5100.h -- Ethernet libs sould allow for this to be 
+      overridden
+Note: Should take a socket an argument, and does not need to use seperate
+      socket for Client and Server
 Note: Does not handle BUNDLES
 
 Installation
