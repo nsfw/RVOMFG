@@ -289,7 +289,7 @@ int16_t OSCMessage::setTypeTags(const char *_tags ){
 	
 	argsNum=(uint16_t)strlen(_tags);
 	
-	if(argsNum > kMaxAugument){
+	if(argsNum > kMaxArgument){
 		DBG_LOGLN("set tags max arg err");
 		flush();
 		return 1;
