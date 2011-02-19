@@ -25,16 +25,20 @@ byte debugLevel = 0;
 // include appropriate configuration
 ///////////////////////////////////////////////////////////////////////////////
 // #include "conf1led.h"	// 1 LED useful for debugging
-// #include "conf4x2.h"		// 4x2 matrix
+#include "conf4x2.h"		// 4x2 matrix
 
 // Remember - we're talking ROWS and COLUMNS
-#include "conf9x10.h"		// initial two strings on RV
-#include "test9x10.h"		// concentric circles
+// #include "conf9x10.h"		// initial two strings on RV
+// #include "test9x10.h"		// concentric circles
 
 // Ethernet
 byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-byte myIp[]  = { 192, 168, 69, 100 };
-int  serverPort  = 10000;
+byte myIp[]  = { 198, 178, 187, 122 };
+int  serverPort  = 9999;
+// OSC
+#include <ArdOSC.h>
+OSCServer server;
+OSCMessage *oscmsg;
 
 // FRAME BUFFER
 rgb img[IMG_HEIGHT][IMG_WIDTH]={128,0,255};
@@ -52,7 +56,7 @@ rgb c3 = {0,0,255};
 void setup() {
     Serial.begin(9600);
     Serial.println("Device Start");
-    Ethernet.begin(myMac ,myIp); 
+
     int i = 0;
     while (i < STRAND_COUNT) {
         pinMode(strands[i].pin, OUTPUT);
@@ -67,6 +71,10 @@ void setup() {
   
     delay(1000);
 
+    Ethernet.begin(myMac ,myIp); 
+    server.sockOpen(serverPort);
+
+
     initFrameBuffer(0);		// put *something* in the frame buffer
 
     Serial.print("Initializing Strands");
@@ -78,6 +86,38 @@ void setup() {
 }
 
 void loop(){
+    // wait for an image to come in and then display it!
+    if(server.available()){
+        oscmsg=server.getMessage();
+        copyImage();
+        sendIMGPara();
+    }    
+}
+
+void copyImage(){
+    int w = oscmsg->getInteger32(0);
+    int h = oscmsg->getInteger32(1);
+
+    // 
+    byte *data = (byte*) oscmsg->getBlob(2)->data;
+
+    // Serial.print(oscmsg->getBlob(2)->len);
+    // dumpHex(data, "blob", 2);
+
+    // just stick some pattern in it for now
+    for(byte x=0; x<IMG_WIDTH; x++){
+        for(byte y=0; y<IMG_HEIGHT; y++){
+            rgb *p = &img[y][x];
+            p->r = *data++;
+            p->g = *data++;
+            p->b = *data++;
+            data++;	// skip alpha
+        }
+    }
+}
+
+
+void loop0(){
     static int i=0;
     static float bright=1.0;
     int dir=-1;
@@ -105,7 +145,6 @@ void loop(){
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifdef conf4x2
-
 void initFrameBuffer(int i){
     // just stick some pattern in it for now
     for(byte x=0; x<IMG_WIDTH; x++){
@@ -116,8 +155,8 @@ void initFrameBuffer(int i){
         }
     }
 }
-
 #endif
+
 #ifdef conf9x10
 void initFrameBuffer(int i){
     // just stick some pattern in it for now
