@@ -332,10 +332,10 @@ void prepOutBuffer(){
         for(byte y=0; y<IMG_HEIGHT; y++){
             int ny = y+vs;
             int nx = x+hs;
-            rgb *s = &img[ny%IMG_HEIGHT][nx%IMG_WIDTH];
+            rgb *s = &img[abs(ny%IMG_HEIGHT)][abs(nx%IMG_WIDTH)];
             float hsv[3];
             converter.rgbToHsv(s->r, s->g, s->b, hsv);
-            converter.hsvToRgb(fmod(hsv[0]+hue,1.0), hsv[1], bright, (byte *) &out[y][x]);
+            converter.hsvToRgb(fabs(fmod(hsv[0]+hue,1.0)), hsv[1], bright, (byte *) &out[y][x]);
         }
     }
     
