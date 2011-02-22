@@ -19,6 +19,10 @@ All LEDs are updated each frame, in strand/index order.
 #include <Server.h>
 #include <Udp.h>
 
+// rgb <-> hsv
+#include "RGBConverter.h"
+RGBConverter converter;
+
 byte debugLevel = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,13 +45,19 @@ OSCServer osc;
 OSCMessage *oscmsg;
 
 // FRAME BUFFER
-rgb img[IMG_HEIGHT][IMG_WIDTH]={128,0,255};
+rgb img[IMG_HEIGHT][IMG_WIDTH]={128,0,255};		// source image from controller
+rgb out[IMG_HEIGHT][IMG_WIDTH]={128,0,255};		// output image (post scroll)
 // MAX of 0xff seems to glitch things
 #define MAX_INTENSITY 0x0f2
 rgb white = { 255, 255, 255 };
 rgb red = {255, 0, 0};
 rgb green = {0, 255, 0};
 rgb blue = {0,0,255};
+
+// scroll rates
+float hScrollRate=0.0;
+float vScrollRate=0.0;
+float hueScrollRate=0.0;
 
 // animated colors
 rgb c1 = {255,0,0};
@@ -56,6 +66,7 @@ rgb c3 = {0,0,255};
 
 // OSC "handlers"
 
+struct rgb foo(rgb* p){ *p; }
 
 void setup() {
     Serial.begin(9600);
@@ -93,18 +104,42 @@ void loop(){
     if(osc.available()){
         oscmsg=osc.getMessage();
         oscDispatch();
-        // copyImage();
-        sendIMGPara();
     }    
+    sendIMGPara();
 }
 
 void oscDispatch(){
+    static int resetcount=0;
      // dispatch 
     char *p = oscmsg->getOSCAddress();
-    if(!strncasecmp(p,"/screen",7)){ copyImage(); return; }
-    if(!strncasecmp(p,"/bright",7)){ brightness(oscmsg->getFloat(0)); return; }
-    Serial.print("Unrecognized Msg: ");
-    Serial.println(p);
+    if(!strncasecmp(p,"/screen",7)){
+        copyImage();
+    } else if(!strncasecmp(p,"/bright",7)){
+        brightness(oscmsg->getFloat(0)); 
+    } else if(!strncasecmp(p,"/hscroll",8)){
+        hScrollRate=oscmsg->getFloat(0); 
+    } else if(!strncasecmp(p,"/vscroll",8)){
+        vScrollRate=oscmsg->getFloat(0); 
+    } else if(!strncasecmp(p,"/huescroll",5)){
+        hueScrollRate=oscmsg->getFloat(0); 
+    } else if(!strncasecmp(p,"/fill",5)){
+        // fill framebuffer w/ an rgb(float) color
+        rgb c;
+        if(oscmsg->getArgsNum()==4){
+            c.r=oscmsg->getFloat(0)*255;
+            c.g=oscmsg->getFloat(1)*255;
+            c.b=oscmsg->getFloat(2)*255;
+            fill(c);
+        } else {
+            Serial.println("err: /fill expects 3 floats");
+        }
+    } else if(!strncasecmp(p,"/reset",6)){
+        hScrollRate=vScrollRate=hueScrollRate=0.0;
+        initFrameBuffer(resetcount++);
+    } else {
+        Serial.print("Unrecognized Msg: ");
+        Serial.println(p);
+    }
 }
 
 void copyImage(){
@@ -189,19 +224,32 @@ void initFrameBuffer(int i){
 }
 #endif
 
+void fill(struct rgb c){
+    // fill the frame buffer with a color
+    for(byte x=0; x<IMG_WIDTH; x++){
+        for(byte y=0; y<IMG_HEIGHT; y++){
+            img[y][x]=c;
+        }
+    }
+}
+
 
 byte imgBright=MAX_INTENSITY;
+float bright=1.0;
 
-void brightness(float bright){
+void brightness(float b){
+    bright=b;
     bright = max(0.0, bright);
     bright = min(1.0, bright);
     imgBright = (float)MAX_INTENSITY*bright;
 }
 
 
+
 void sendIMGSerial() {
     // for all strands, one strand at a time
     // Also useful for initial addressing
+    // NOTE: uses img[][] directly instead of out[][]
     for (byte i=0; i<STRAND_COUNT; i++){
         strand *s = &strands[i];
         for(byte index=0; index<s->len; index++){
@@ -221,7 +269,6 @@ void sendSingleLED(byte address, int pin, byte r, byte g, byte b, byte i) {
     deferredSendFrame(pin, buffer);
     sendFrame();
 }
-
 
 void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
     int bufferPos = 0;
@@ -262,7 +309,44 @@ void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
 
 int row[STRAND_COUNT];	// index of LED to display for each strand
 
+void prepOutBuffer(){
+    // copy img[][] -> out[][] w/ possible transforms
+    // consider adding a "hue scroll" that cycles colors
+    static float hs=0;
+    static float vs=0;
+    static float hue=0;
+
+    hs+=hScrollRate;
+    vs+=vScrollRate;
+    hue+=hueScrollRate;
+
+    // for(byte x=0; x<IMG_WIDTH; x++){
+    //     for(byte y=0; y<IMG_HEIGHT; y++){
+    //         int ny = y+vs;
+    //         int nx = x+hs;
+    //         out[y][x] = img[ny%IMG_HEIGHT][nx%IMG_WIDTH];
+    //     }
+    // }
+
+    for(byte x=0; x<IMG_WIDTH; x++){
+        for(byte y=0; y<IMG_HEIGHT; y++){
+            int ny = y+vs;
+            int nx = x+hs;
+            rgb *s = &img[ny%IMG_HEIGHT][nx%IMG_WIDTH];
+            float hsv[3];
+            converter.rgbToHsv(s->r, s->g, s->b, hsv);
+            converter.hsvToRgb(fmod(hsv[0]+hue,1.0), hsv[1], bright, (byte *) &out[y][x]);
+        }
+    }
+    
+
+
+}
+
 void sendIMGPara(){
+    // copy the source frame buffer to the output frame buffer
+    // may do things like scroll image and such...
+    prepOutBuffer();
     // walk the strand length 
     for(byte i=0; i < MAX_STRAND_LEN; i++ ){
         // compute what index each strand should send
@@ -363,7 +447,7 @@ void composeFrame(){
         if (index != -1){
             byte x = strands[s].x[index];
             byte y = strands[s].y[index];
-            rgb *pix = &img[y][x];
+            rgb *pix = &out[y][x];
             makeFrame(index, pix->r, pix->g, pix->b, imgBright, buffer);
             deferredSendFrame(strands[s].pin, buffer);
         }
