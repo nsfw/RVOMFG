@@ -320,27 +320,20 @@ void prepOutBuffer(){
     vs+=vScrollRate;
     hue+=hueScrollRate;
 
-    // for(byte x=0; x<IMG_WIDTH; x++){
-    //     for(byte y=0; y<IMG_HEIGHT; y++){
-    //         int ny = y+vs;
-    //         int nx = x+hs;
-    //         out[y][x] = img[ny%IMG_HEIGHT][nx%IMG_WIDTH];
-    //     }
-    // }
-
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
             int ny = y+vs;
             int nx = x+hs;
             rgb *s = &img[abs(ny%IMG_HEIGHT)][abs(nx%IMG_WIDTH)];
-            float hsv[3];
-            converter.rgbToHsv(s->r, s->g, s->b, hsv);
-            converter.hsvToRgb(fabs(fmod(hsv[0]+hue,1.0)), hsv[1], bright, (byte *) &out[y][x]);
+            if(hueScrollRate!=0.0){
+                float hsv[3];
+                converter.rgbToHsv(s->r, s->g, s->b, hsv);
+                converter.hsvToRgb(fabs(fmod(hsv[0]+hue,1.0)), hsv[1], hsv[2], (byte*) &out[y][x]);
+            } else {
+                out[y][x] = *s;
+            }
         }
     }
-    
-
-
 }
 
 void sendIMGPara(){
