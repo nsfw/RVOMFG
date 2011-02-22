@@ -11,19 +11,20 @@
  * @param   Number  g       The green color value
  * @param   Number  b       The blue color value
  * @return  Array           The HSL representation
+ *
+ * 2/22/11 - sfw - works now... converted bytes to floats as nesc
  */
-void RGBConverter::rgbToHsl(byte r, byte g, byte b, float hsl[]) { 
-    r /= 255;
-    g /= 255;
-    b /= 255;
-    byte max = threeway_max(r, g, b);
-    byte min = threeway_min(r, g, b);
-    byte h, s, l = (max + min) / 2;
+void RGBConverter::rgbToHsl(byte _r, byte _g, byte _b, float hsl[]) {
+
+    float r = (float)_r/255.0, g = (float)_g/255.0, b = (float)_b/255.0;
+    float max = threeway_max(r, g, b);
+    float min = threeway_min(r, g, b);
+    float h, s, l = (max + min) / 2;
 
     if (max == min) {
         h = s = 0; // achromatic
     } else {
-        byte d = max - min;
+        float d = max - min;
         s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
         if (max == r) {
             h = (g - b) / d + (g < b ? 6 : 0);
@@ -79,9 +80,11 @@ void RGBConverter::hslToRgb(float h, float s, float l, byte rgb[]) {
  * @param   Number  b       The blue color value
  * @return  Array           The HSV representation
  */
-void RGBConverter::rgbToHsv(byte r, byte g, byte b, float hsv[]) {
-    r = r/255, g = g/255, b = b/255;
-    byte max = threeway_max(r, g, b), min = threeway_min(r, g, b);
+void RGBConverter::rgbToHsv(byte _r, byte _g, byte _b, float hsv[]) {
+
+    float r = (float)_r/255.0, g = (float)_g/255.0, b = (float)_b/255.0;
+
+    float max = threeway_max(r, g, b), min = threeway_min(r, g, b);
     float h, s, v = max;
 
     float d = max - min;
@@ -139,13 +142,13 @@ void RGBConverter::hsvToRgb(float h, float s, float v, byte rgb[]) {
     rgb[2] = b * 255;
 }
  
-byte RGBConverter::threeway_max(byte a, byte b, byte c) {
-    return max(a, max(b, c));
-}
+// byte RGBConverter::threeway_max(byte a, byte b, byte c) {
+//     return max(a, max(b, c));
+// }
 
-byte RGBConverter::threeway_min(byte a, byte b, byte c) {
-    return min(a, min(b, c));
-}
+// byte RGBConverter::threeway_min(byte a, byte b, byte c) {
+//     return min(a, min(b, c));
+// }
 
 float RGBConverter::hue2rgb(float p, float q, float t) {
     if(t < 0) t += 1;
