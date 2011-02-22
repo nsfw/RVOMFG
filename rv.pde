@@ -37,12 +37,13 @@ byte myIp[]  = { 198, 178, 187, 122 };
 int  serverPort  = 9999;
 // OSC
 #include <ArdOSC.h>
-OSCServer server;
+OSCServer osc;
 OSCMessage *oscmsg;
 
 // FRAME BUFFER
 rgb img[IMG_HEIGHT][IMG_WIDTH]={128,0,255};
-#define DEFAULT_INTENSITY 0xee
+// MAX of 0xff seems to glitch things
+#define MAX_INTENSITY 0x0f2
 rgb white = { 255, 255, 255 };
 rgb red = {255, 0, 0};
 rgb green = {0, 255, 0};
@@ -52,6 +53,9 @@ rgb blue = {0,0,255};
 rgb c1 = {255,0,0};
 rgb c2 = {0,255,0};
 rgb c3 = {0,0,255};
+
+// OSC "handlers"
+
 
 void setup() {
     Serial.begin(9600);
@@ -72,8 +76,7 @@ void setup() {
     delay(1000);
 
     Ethernet.begin(myMac ,myIp); 
-    server.sockOpen(serverPort);
-
+    osc.sockOpen(serverPort);
 
     initFrameBuffer(0);		// put *something* in the frame buffer
 
@@ -87,33 +90,50 @@ void setup() {
 
 void loop(){
     // wait for an image to come in and then display it!
-    if(server.available()){
-        oscmsg=server.getMessage();
-        copyImage();
+    if(osc.available()){
+        oscmsg=osc.getMessage();
+        oscDispatch();
+        // copyImage();
         sendIMGPara();
     }    
 }
 
+void oscDispatch(){
+     // dispatch 
+    char *p = oscmsg->getOSCAddress();
+    if(!strncasecmp(p,"/screen",7)){ copyImage(); return; }
+    if(!strncasecmp(p,"/bright",7)){ brightness(oscmsg->getFloat(0)); return; }
+    Serial.print("Unrecognized Msg: ");
+    Serial.println(p);
+}
+
 void copyImage(){
+	//
+    // copy image data from OSC to framebuffer
+    // 
+
     int w = oscmsg->getInteger32(0);
     int h = oscmsg->getInteger32(1);
 
-    // 
+    // Image must at least as big as frame buffer
+    if(w<IMG_WIDTH || h<IMG_HEIGHT){
+        Serial.println("err: /screen bad image size");
+        return;
+    }
+
     byte *data = (byte*) oscmsg->getBlob(2)->data;
 
-    // Serial.print(oscmsg->getBlob(2)->len);
-    // dumpHex(data, "blob", 2);
-
-    // just stick some pattern in it for now
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
-            rgb *p = &img[y][x];
-            p->r = *data++;
-            p->g = *data++;
-            p->b = *data++;
-            data++;	// skip alpha
+            rgb *d = &img[y][x];
+            byte *s = data + ((x+(y*w))<<2);	// src pixels in uint32
+            d->r = *s++;
+            d->g = *s++;
+            d->b = *s++;
+            // skip alpha
         }
     }
+    
 }
 
 
@@ -170,13 +190,14 @@ void initFrameBuffer(int i){
 #endif
 
 
-byte imgBright=DEFAULT_INTENSITY;
+byte imgBright=MAX_INTENSITY;
 
 void brightness(float bright){
     bright = max(0.0, bright);
     bright = min(1.0, bright);
-    imgBright = (float)255.0*bright;
+    imgBright = (float)MAX_INTENSITY*bright;
 }
+
 
 void sendIMGSerial() {
     // for all strands, one strand at a time
