@@ -14,6 +14,9 @@
 
 #include "WProgram.h"
 
+#define threeway_max(a, b, c) max(a, max(b, c))
+#define threeway_min(a, b, c) min(a, min(b, c))
+
 class RGBConverter {
 
 public:
@@ -55,7 +58,6 @@ public:
      * @return  float hsv[]  The HSV representation
      */
     void rgbToHsv(byte r, byte g, byte b, float hsv[]);
-    
     /**
      * Converts an HSV color value to RGB. Conversion formula
      * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
@@ -70,8 +72,6 @@ public:
     void hsvToRgb(float h, float s, float v, byte rgb[]);
      
 private:
-    byte threeway_max(byte a, byte b, byte c);
-    byte threeway_min(byte a, byte b, byte c);
     float hue2rgb(float p, float q, float t);
 };
 
