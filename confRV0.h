@@ -3,7 +3,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 #define MAX_STRAND_LEN 36	// Should be the ACTUAL LENGTH OF LONGEST STRAND - electrical max is 62
 #define STRAND_COUNT 4		// Needs to be ACTUAL NUMBER OF DATA LINES IN USE
-#define IMG_WIDTH 15
+#define IMG_WIDTH 16
 #define IMG_HEIGHT 9
 ///////////////////////////////////////////////////////////////////////////////
 #include "rv.h"
