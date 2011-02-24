@@ -10,6 +10,8 @@ Note: The output display is most likely NOT Rectangular and there is no
 correlation between input row/column and "strand"/"light".
 
 All LEDs are updated each frame, in strand/index order. 
+
+Scott -- alcoholiday at gmail
 */
 
 // Ethernet Support
@@ -29,16 +31,28 @@ byte debugLevel = 0;
 // include appropriate configuration
 ///////////////////////////////////////////////////////////////////////////////
 // #include "conf1led.h"	// 1 LED useful for debugging
-#include "conf4x2.h"		// 4x2 matrix
-
 // Remember - we're talking ROWS and COLUMNS
 // #include "conf9x10.h"		// initial two strings on RV
 // #include "test9x10.h"		// concentric circles
+// #include "conf4x2.h"		// 4x2 matrix
+#include "confRV0.h"		// RV v0
 
-// Ethernet
+// initialization behavior
+#define rgbrgbinit 
+// #define addrTest
+
+// Ethernet - IP ADDRESS
+#ifdef DIRECT_CONNECT
 byte myMac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte myIp[]  = { 198, 178, 187, 122 };
+#endif
+#define RVIP
+#ifdef RVIP
+byte myMac[] = { 0xBE, 0xEF, 0xBE, 0xEF, 0xBE, 0xEF };
+byte myIp[]  = { 192, 168, 69, 69 };
+#endif
 int  serverPort  = 9999;
+
 // OSC
 #include <ArdOSC.h>
 OSCServer osc;
@@ -50,6 +64,7 @@ rgb out[IMG_HEIGHT][IMG_WIDTH]={128,0,255};		// output image (post scroll)
 // MAX of 0xff seems to glitch things
 #define MAX_INTENSITY 0x0f2
 rgb white = { 255, 255, 255 };
+rgb black = { 0,0,0 };
 rgb red = {255, 0, 0};
 rgb green = {0, 255, 0};
 rgb blue = {0,0,255};
@@ -59,18 +74,13 @@ float hScrollRate=0.0;
 float vScrollRate=0.0;
 float hueScrollRate=0.0;
 
-// animated colors
-rgb c1 = {255,0,0};
-rgb c2 = {0,255,0};
-rgb c3 = {0,0,255};
-
-// OSC "handlers"
-
-struct rgb foo(rgb* p){ *p; }
+// forward reference
+void pf(char *fmt, ... );
 
 void setup() {
     Serial.begin(9600);
-    Serial.println("Device Start");
+    Serial.println("Device Start -- ");
+    pf("IP: %d.%d.%d.%d:%d\n", myIp[0], myIp[1], myIp[2], myIp[3], serverPort);
 
     int i = 0;
     while (i < STRAND_COUNT) {
@@ -83,13 +93,13 @@ void setup() {
         i++;
     }
     Serial.println("Output Pins Configured");
-  
-    delay(1000);
 
     Ethernet.begin(myMac ,myIp); 
     osc.sockOpen(serverPort);
 
-    initFrameBuffer(0);		// put *something* in the frame buffer
+    // initFrameBuffer(0);		// put *something* in the frame buffer
+    resetDisplay(0);			// put *something* in the frame buffer
+    hueScrollRate=0.005;		// and make it do something while wait for something to do
 
     Serial.print("Initializing Strands");
     sendIMGSerial();		// note: First time since power up, will assign addresses.
@@ -99,14 +109,28 @@ void setup() {
     debugLevel=0;
 }
 
+byte noOSC=1;
+
 void loop(){
+    static int i=0;
     // wait for an image to come in and then display it!
     if(osc.available()){
+        if(noOSC){
+            resetDisplay(0);	// get back to a known state if someone is talking to us
+            noOSC=0;
+        }
         oscmsg=osc.getMessage();
         oscDispatch();
     }    
+    if(noOSC){	// we're just waking up... do stuff
+        initFrameBuffer(i++);
+    }
     sendIMGPara();
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// OSC "handlers"
+///////////////////////////////////////////////////////////////////////////////
 
 void oscDispatch(){
     static int resetcount=0;
@@ -134,8 +158,9 @@ void oscDispatch(){
             Serial.println("err: /fill expects 3 floats");
         }
     } else if(!strncasecmp(p,"/reset",6)){
-        hScrollRate=vScrollRate=hueScrollRate=0.0;
-        initFrameBuffer(resetcount++);
+        // hScrollRate=vScrollRate=hueScrollRate=0.0;
+        // initFrameBuffer(resetcount++);
+        resetDisplay(resetcount++);
     } else {
         Serial.print("Unrecognized Msg: ");
         Serial.println(p);
@@ -146,7 +171,6 @@ void copyImage(){
 	//
     // copy image data from OSC to framebuffer
     // 
-
     int w = oscmsg->getInteger32(0);
     int h = oscmsg->getInteger32(1);
 
@@ -168,39 +192,16 @@ void copyImage(){
             // skip alpha
         }
     }
-    
 }
 
-
-void loop0(){
-    static int i=0;
-    static float bright=1.0;
-    int dir=-1;
-
-    if(i>64){
-        bright = 0.5 + (0.35 *sin(i/20.0));
-        brightness(bright);
-        initFrameBuffer(i>>5);
-        sendIMGPara();
-        // delay(20);
-        if(i>2000) i=0;
-    } else {
-        // do something wth IMAGE HERE
-        initFrameBuffer(i>>3);
-        sendIMGPara();
-        // sendIMGSerial();
-        delay(200);
-    }
-    i++;
-};
-
-
 ///////////////////////////////////////////////////////////////////////////////
-// Library
+// Configuration
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifdef conf4x2
+#ifdef rgbrgbinit
 void initFrameBuffer(int i){
+    if(i>0) return; 	// just do it the first time
+
     // just stick some pattern in it for now
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
@@ -214,15 +215,59 @@ void initFrameBuffer(int i){
 
 #ifdef conf9x10
 void initFrameBuffer(int i){
-    // just stick some pattern in it for now
-    for(byte x=0; x<IMG_WIDTH; x++){
-        for(byte y=0; y<IMG_HEIGHT; y++){
-            i = ((test9x10[y][x]+i)-1)%3;
-            img[y][x]= (i==0)?c1:((i==1)?c2:c3);
+    i=i%3000;
+    if(i<1000){
+        // just stick some pattern in it for now
+        for(byte x=0; x<IMG_WIDTH; x++){
+            for(byte y=0; y<IMG_HEIGHT; y++){
+                i = ((test9x10[y][x]+i)-1)%3;
+                img[y][x]= (i==0)?red:((i==1)?green:blue);
+            }
+        }
+    } else {
+        // rows and columns
+        for(byte x=0; x<IMG_WIDTH; x++){
+            for(byte y=0; y<IMG_HEIGHT; y++){
+                int z = (i<2000)? x%3:y%3;
+                img[y][x]= (z==0)?red:((z==1)?green:blue);
+            }
         }
     }
 }
 #endif
+
+#ifdef addrTest
+void initFrameBuffer(int i){
+    i=i%3000;
+    if(i<1000){
+        static int p=0;
+        // just stick some pattern in it for now
+        delay(50);
+        fill(black);
+        img[p/IMG_WIDTH][p%IMG_WIDTH]=red;
+        p = ++p % IMG_WIDTH*IMG_HEIGHT;
+    } else {
+        // rows and columns
+        for(byte x=0; x<IMG_WIDTH; x++){
+            for(byte y=0; y<IMG_HEIGHT; y++){
+                int z = (i<2000)? x%3 :y%3 ;
+                img[y][x]= (z==0)?red:((z==1)?green:blue);
+            }
+        }
+    }
+}
+#endif
+
+
+void resetDisplay(int i){
+    hScrollRate=vScrollRate=hueScrollRate=0.0;
+    initFrameBuffer(i);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Library
+///////////////////////////////////////////////////////////////////////////////
 
 void fill(struct rgb c){
     // fill the frame buffer with a color
@@ -245,6 +290,7 @@ void brightness(float b){
 }
 
 
+// think we can switch to the parallell version now...
 
 void sendIMGSerial() {
     // for all strands, one strand at a time
@@ -359,6 +405,10 @@ void setGlobalIntensity(byte val){
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+// Low Level I/O
+///////////////////////////////////////////////////////////////////////////////
+//
 // Serial Protocol:
 //
 // Idle bus state: Low
@@ -370,7 +420,6 @@ void setGlobalIntensity(byte val){
 // Phase 1 2 3 
 // 0 =   L H H 
 // 1 =   L L H
-
 
 void setPin(byte pin){
     if(pin<30) PORTA |= (1<<(pin-22));
@@ -480,7 +529,7 @@ void sendFrame(){
 // debug utils
 ///////////////////////////////////////////////////////////////////////////////
 #include <stdarg.h>
-void p(char *fmt, ... ){
+void pf(char *fmt, ... ){
         char tmp[128]; // resulting string limited to 128 chars
         va_list args;
         va_start (args, fmt );
