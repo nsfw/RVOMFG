@@ -25,7 +25,11 @@ Scott -- alcoholiday at gmail
 #include "RGBConverter.h"
 RGBConverter converter;
 
-byte debugLevel = 0;
+// debug 
+#define DBG	// conditional DBG code compiled in - small speed penalty
+
+// remotely settable -- e.g.  osc("/debug",100)
+byte debugLevel = 0;	// debugLevel > 100 will print each pixel as sent via /screen
 
 ///////////////////////////////////////////////////////////////////////////////
 // include appropriate configuration
@@ -35,11 +39,15 @@ byte debugLevel = 0;
 // #include "conf9x10.h"		// initial two strings on RV
 // #include "test9x10.h"		// concentric circles
 // #include "conf4x2.h"		// 4x2 matrix
+
 #include "confRV0.h"		// RV v0
 
 // initialization behavior
 #define rgbrgbinit 
-// #define addrTest
+
+// Low level Serial Rate 
+int tribit=8;		// 10us per 1/3rd of a serial bit 
+int quiettime=27;	// 30us quiesce time between frames
 
 // Ethernet - IP ADDRESS
 #ifdef DIRECT_CONNECT
@@ -113,8 +121,10 @@ byte noOSC=1;
 
 void loop(){
     static int i=0;
+    static int dirty=0;
     // wait for an image to come in and then display it!
     if(osc.available()){
+        dirty=1;
         if(noOSC){
             resetDisplay(0);	// get back to a known state if someone is talking to us
             noOSC=0;
@@ -124,8 +134,9 @@ void loop(){
     }    
     if(noOSC){	// we're just waking up... do stuff
         initFrameBuffer(i++);
+        dirty=1;
     }
-    sendIMGPara();
+    if(dirty || hueScrollRate || vScrollRate || hScrollRate ) sendIMGPara();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -134,19 +145,21 @@ void loop(){
 
 void oscDispatch(){
     static int resetcount=0;
-     // dispatch 
+     // dispatch LEN is minimum len to compare
     char *p = oscmsg->getOSCAddress();
-    if(!strncasecmp(p,"/screen",7)){
+    p++;	    // assume first char is '/'
+
+    if(!strncasecmp(p,"screen",6)){
         copyImage();
-    } else if(!strncasecmp(p,"/bright",7)){
+    } else if(!strncasecmp(p,"bright",5)){
         brightness(oscmsg->getFloat(0)); 
-    } else if(!strncasecmp(p,"/hscroll",8)){
+    } else if(!strncasecmp(p,"hscroll",7)){
         hScrollRate=oscmsg->getFloat(0); 
-    } else if(!strncasecmp(p,"/vscroll",8)){
+    } else if(!strncasecmp(p,"vscroll",7)){
         vScrollRate=oscmsg->getFloat(0); 
-    } else if(!strncasecmp(p,"/huescroll",5)){
+    } else if(!strncasecmp(p,"huescroll",8)){
         hueScrollRate=oscmsg->getFloat(0); 
-    } else if(!strncasecmp(p,"/fill",5)){
+    } else if(!strncasecmp(p,"fill",4)){
         // fill framebuffer w/ an rgb(float) color
         rgb c;
         if(oscmsg->getArgsNum()==4){
@@ -157,10 +170,34 @@ void oscDispatch(){
         } else {
             Serial.println("err: /fill expects 3 floats");
         }
-    } else if(!strncasecmp(p,"/reset",6)){
-        // hScrollRate=vScrollRate=hueScrollRate=0.0;
-        // initFrameBuffer(resetcount++);
-        resetDisplay(resetcount++);
+    } else if(!strncasecmp(p,"reset",5)){
+        resetDisplay(resetcount++);		// back to a known state
+    } else if(!strncasecmp(p,"setyx",5)){
+        // Just set a single pixel!
+        int y, x;
+        rgb c;
+        if(oscmsg->getArgsNum()==6){
+            y = oscmsg->getInteger32(0);
+            x = oscmsg->getInteger32(1);
+            c.r=oscmsg->getFloat(2)*255;
+            c.g=oscmsg->getFloat(3)*255;
+            c.b=oscmsg->getFloat(4)*255;
+            // c.a=0xff;	//  make this optionally settable
+            if(x<IMG_WIDTH && y<IMG_HEIGHT){
+                img[y][x] = c;
+            } else {
+                pf("err setyx: %d,%d bad outside of %d,%d\n");
+            }
+        } else {
+            pf("err: /setyx expects i,i,f,f,f");
+        }
+    } else if(!strncasecmp(p,"datarate",8)){
+        // debug method - set serial data rate! tribit quiettime
+        tribit    = oscmsg->getInteger32(0);
+        quiettime = oscmsg->getInteger32(1);
+        pf("tribit = %d quiettime = %d", tribit, quiettime);
+    } else if(!strncasecmp(p,"debug",5)){
+        debugLevel=oscmsg->getInteger32(0);	// set debug level
     } else {
         Serial.print("Unrecognized Msg: ");
         Serial.println(p);
@@ -171,16 +208,22 @@ void copyImage(){
 	//
     // copy image data from OSC to framebuffer
     // 
-    int w = oscmsg->getInteger32(0);
-    int h = oscmsg->getInteger32(1);
+    int h = oscmsg->getInteger32(0);
+    int w = oscmsg->getInteger32(1);
 
-    // Image must at least as big as frame buffer
+    // Inbound Image must at least as big as our measly frame buffer in size
     if(w<IMG_WIDTH || h<IMG_HEIGHT){
-        Serial.println("err: /screen bad image size");
+        pf("err: /screen %d, %d SMALLER than %d, %d\n",w,h,IMG_WIDTH,IMG_HEIGHT);
         return;
     }
 
     byte *data = (byte*) oscmsg->getBlob(2)->data;
+#ifdef DBG
+    if(debugLevel==101){
+        pf("Blob Length: %d\n",oscmsg->getBlob(2)->len);
+        dumpHex(data, "ScreenData:", 4);
+    }
+#endif
 
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
@@ -190,24 +233,28 @@ void copyImage(){
             d->g = *s++;
             d->b = *s++;
             // skip alpha
+#ifdef DBG
+            if(debugLevel>100) pf("[%d][%d]=%d,%d,%d ",y,x,d->r,d->g,d->b);
+#endif
         }
+#ifdef DBG
+        if(debugLevel>100) Serial.println("/n");
+#endif
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Configuration
+// Initial Frame Buffer functions
 ///////////////////////////////////////////////////////////////////////////////
 
 #ifdef rgbrgbinit
 void initFrameBuffer(int i){
-    if(i>0) return; 	// just do it the first time
-
     // just stick some pattern in it for now
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
-            i = i%3;
-            img[y][x]= (i==0)?red:((i==1)?blue:green);
-            i++;
+            static int z=0;
+            img[y][x]= (z==0)?red:((z==1)?green:blue);
+            z=(++z)%3;
         }
     }
 }
@@ -235,29 +282,6 @@ void initFrameBuffer(int i){
     }
 }
 #endif
-
-#ifdef addrTest
-void initFrameBuffer(int i){
-    i=i%3000;
-    if(i<1000){
-        static int p=0;
-        // just stick some pattern in it for now
-        delay(50);
-        fill(black);
-        img[p/IMG_WIDTH][p%IMG_WIDTH]=red;
-        p = ++p % IMG_WIDTH*IMG_HEIGHT;
-    } else {
-        // rows and columns
-        for(byte x=0; x<IMG_WIDTH; x++){
-            for(byte y=0; y<IMG_HEIGHT; y++){
-                int z = (i<2000)? x%3 :y%3 ;
-                img[y][x]= (z==0)?red:((z==1)?green:blue);
-            }
-        }
-    }
-}
-#endif
-
 
 void resetDisplay(int i){
     hScrollRate=vScrollRate=hueScrollRate=0.0;
@@ -520,9 +544,9 @@ void sendFrame(){
     for(byte i = 0; i<FRAMESIZE; i++){
         PORTA = (PORTA & ~portAmask) | (portAframe[i] & portAmask);	// selectively set bits
         PORTC = (PORTC & ~portCmask) | (portCframe[i] & portCmask);	// selectively set bits
-        delayMicroseconds(10);
+        delayMicroseconds(tribit);
     }
-    delayMicroseconds(20);	// 30us quiesce
+    delayMicroseconds(quiettime);	// 30us quiesce
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -551,7 +575,7 @@ static void	dumpHex(void * startAddress, char* name, unsigned lines){
 	myAddressPointer	=	(unsigned long) startAddress;
     sprintf(textString, "%s:\n", name);
     Serial.print(textString);
-	while (lineCount < 1) {
+	while (lineCount < lines) {
 		sprintf(textString, "%04X - ", myAddressPointer);
 		Serial.print(textString);
 		

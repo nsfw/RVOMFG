@@ -4,12 +4,12 @@
 import CCore
 tcore = CCore.CCore(pubsub="osc-udp://192.168.69.69:9999")
 
-def black = [0.0, 0.0, 0.0]
-def white = [1.0, 1.0, 1.0]
-def red = [1.0, 0.0, 0.0]
-def green = [0.0, 1.0, 0.0]
-def blue = [0.0, 0.0, 1.0]
-def mag = [1.0, 0.0, 0.7]
+black = [0.0, 0.0, 0.0]
+white = [1.0, 1.0, 1.0]
+red = [1.0, 0.0, 0.0]
+green = [0.0, 1.0, 0.0]
+blue = [0.0, 0.0, 1.0]
+mag = [1.0, 0.0, 0.7]
 
 if(False):
     tcore.send("/bright",[0.5])
@@ -23,7 +23,10 @@ if(False):
     tcore.send("/bright",[0.7])
     tcore.send("/huescroll",[0.01])
 // new
-    tcode.send("/setyx",1,0,mag)
+tcore.send("/setyx",[1,0,1.0, 0.0,0.0])	//x:0,y:1 = red
+
+def reset():
+    tcore.send("/reset",[1.0])
 
 def foo():
     tcore.send("/huescroll",[0.0])
@@ -34,4 +37,21 @@ def flash(c1,c2):
     tcore.send("/fill",c1)
     tcore.send("/fill",c2)
 
+def set(x,y,c):
+    tcore.send("/setyx",[y,x,c[0],c[1],c[2]])
+
+def debug(level):
+    tcore.send("/debug",[level])
+
+import time
+
+def walk(xmax,ymax):
+    for y in range(0,ymax):
+        for x in range(0, xmax):
+            print "x,y=",x,y
+            set(x,y,red)
+            time.sleep(0.5)
+            set(x,y,white)
+
+            
 
