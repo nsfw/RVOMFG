@@ -92,6 +92,7 @@ void setup() {
 
     int i = 0;
     while (i < STRAND_COUNT) {
+        strandEnabled[i]=1;
         pinMode(strands[i].pin, OUTPUT);
         digitalWrite(strands[i].pin, LOW);
         Serial.print("Configured strand ");
@@ -191,6 +192,13 @@ void oscDispatch(){
         } else {
             pf("err: /setyx expects i,i,f,f,f");
         }
+    } else if(!strncasecmp(p,"panel",5)){
+        // enable or disable a panel
+        // /panel panel#, mode
+        int pan = oscmsg->getInteger32(0);
+        int mode = oscmsg->getInteger32(1);
+        if(!mode) fill(black);
+        panelEnable(pan,mode);
     } else if(!strncasecmp(p,"datarate",8)){
         // debug method - set serial data rate! tribit quiettime
         tribit    = oscmsg->getInteger32(0);
@@ -241,6 +249,13 @@ void copyImage(){
         if(debugLevel>100) Serial.println("/n");
 #endif
     }
+}
+
+void panelEnable(int pan, int enable){
+    for (int i=panelInfo[pan][1]; i<panelInfo[pan][2]; i++){
+        strandEnabled[i]=enable;
+    }
+    panelInfo[pan][0]=enable;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
