@@ -2,7 +2,7 @@
 Drive a matrix of Color Effects LEDs
 
 Input is a RECTANGULAR matrix of pixel values (typically animated) and
-a map of strand/light (typically fixed) to x,y. The map consists of
+a map of strands/lights (typically fixed) to x,y. The map consists of
 STRAND_COUNT length array of arrays of bulbs and associated x,y source
 pixel.
 
@@ -144,6 +144,19 @@ void loop(){
 // OSC "handlers"
 ///////////////////////////////////////////////////////////////////////////////
 
+void panelEnable(int p, int enable){
+    pf("panelEnable %d %d\n", p, enable);
+
+    int start=0, end=5;
+    if(p==1){start=6; end=11;}
+
+    for (int i=start; i<=end; i++){
+        strandEnabled[i]=enable;
+        pf("setting strand %d to %d\n", i, enable);
+    }
+}
+
+
 void oscDispatch(){
     static int resetcount=0;
      // dispatch LEN is minimum len to compare
@@ -186,8 +199,6 @@ void oscDispatch(){
             // c.a=0xff;	//  make this optionally settable
             if(x<IMG_WIDTH && y<IMG_HEIGHT){
                 img[y][x] = c;
-            } else {
-                pf("err setyx: %d,%d bad outside of %d,%d\n");
             }
         } else {
             pf("err: /setyx expects i,i,f,f,f");
@@ -195,6 +206,8 @@ void oscDispatch(){
     } else if(!strncasecmp(p,"panel",5)){
         // enable or disable a panel
         // /panel panel#, mode
+        Serial.println("handling panel");
+        
         int pan = oscmsg->getInteger32(0);
         int mode = oscmsg->getInteger32(1);
         if(!mode) fill(black);
@@ -251,12 +264,6 @@ void copyImage(){
     }
 }
 
-void panelEnable(int pan, int enable){
-    for (int i=panelInfo[pan][1]; i<panelInfo[pan][2]; i++){
-        strandEnabled[i]=enable;
-    }
-    panelInfo[pan][0]=enable;
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Initial Frame Buffer functions
@@ -525,7 +532,7 @@ void composeFrame(){
     // collect bit streams for ALL strands
     for (byte s=0; s<STRAND_COUNT; s++){
         int index = row[s];
-        if (index != -1){
+        if ((index != -1) && (strandEnabled[s]!=0)){
             byte x = strands[s].x[index];
             byte y = strands[s].y[index];
             rgb *pix = &out[y][x];
