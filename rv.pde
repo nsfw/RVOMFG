@@ -32,22 +32,22 @@ RGBConverter converter;
 byte debugLevel = 0;	// debugLevel > 100 will print each pixel as sent via /screen
 
 ///////////////////////////////////////////////////////////////////////////////
-// include appropriate configuration
+// include appropriate MAPPING configuration
 ///////////////////////////////////////////////////////////////////////////////
 // #include "conf1led.h"	// 1 LED useful for debugging
 // Remember - we're talking ROWS and COLUMNS
 // #include "conf9x10.h"		// initial two strings on RV
 // #include "test9x10.h"		// concentric circles
 // #include "conf4x2.h"		// 4x2 matrix
-
-#include "confRV0.h"		// RV v0
+// #include "confRV0.h"		// RV v0
+#include "confRV1.h"		// RV v1 - text readable on both sides
 
 // initialization behavior
 #define rgbrgbinit 
 
 // Low level Serial Rate 
-int tribit=8;		// 10us per 1/3rd of a serial bit 
-int quiettime=27;	// 30us quiesce time between frames
+int tribit=8;		// # of us (nominal 10) per 1/3rd of a serial bit 
+int quiettime=27;	// # of us (nominal 30) quiesce time between frames
 
 // Ethernet - IP ADDRESS
 #ifdef DIRECT_CONNECT

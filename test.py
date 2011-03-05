@@ -22,16 +22,15 @@ if(False):
     tcore.send("/vscroll",[0.01])
     tcore.send("/bright",[0.7])
     tcore.send("/huescroll",[0.01])
-// new
-tcore.send("/setyx",[1,0,1.0, 0.0,0.0])	//x:0,y:1 = red
+    tcore.send("/setyx",[1,0,1.0, 0.0,0.0])	
 
 def reset():
     tcore.send("/reset",[1.0])
 
 def foo():
-    tcore.send("/huescroll",[0.0])
+    tcore.send("/huescroll",[0.08])
     tcore.send("/fill",[1.0, 0.0, 0.7])
-    tcore.send("/fill",[0.0, 0.0, 0.7])
+
 
 def flash(c1,c2):
     tcore.send("/fill",c1)
@@ -53,5 +52,14 @@ def walk(xmax,ymax):
             time.sleep(0.5)
             set(x,y,white)
 
-            
+def allOn():
+    tcore.send("/panel",[0,1]);
+    tcore.send("/panel",[1,1]);
 
+def driverOff():
+    tcore.send("/panel",[1,0]);
+
+def t1():
+    reset()
+    tcore.send("/huescroll",[0.05])
+    tcore.send("/vscroll",[0.05])

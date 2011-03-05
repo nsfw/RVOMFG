@@ -1,7 +1,15 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Configuration Information
 ///////////////////////////////////////////////////////////////////////////////
+//
+// NOTE: This file maps the right and left sides together, with the
+// back most strands and front most strands corelating. This is swell
+// for visual effects but means that TEXT will read backwards on one
+// side of the RV
+//
+
 #define MAX_STRAND_LEN 36	// Should be the ACTUAL LENGTH OF LONGEST STRAND - electrical max is 62
+//#define STRAND_COUNT 6		// Needs to be ACTUAL NUMBER OF DATA LINES IN USE
 #define STRAND_COUNT 12		// Needs to be ACTUAL NUMBER OF DATA LINES IN USE
 #define IMG_WIDTH 28		// highest index is 27
 #define IMG_HEIGHT 9
@@ -9,6 +17,8 @@
 #include "rv.h"
 
 // Three strands on the back half of RV - upper back corner is 0,0
+
+int strandEnabled[STRAND_COUNT];
 
 #define confRV 1
 strand strands[]={
