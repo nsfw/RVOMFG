@@ -40,7 +40,9 @@ byte debugLevel = 0;	// debugLevel > 100 will print each pixel as sent via /scre
 // #include "test9x10.h"		// concentric circles
 // #include "conf4x2.h"		// 4x2 matrix
 // #include "confRV0.h"		// RV v0
-#include "confRV1.h"		// RV v1 - text readable on both sides
+
+#define FLIP_DRIVER_SIDE	// make text go left to right
+#include "confRV1.h"		// RV v1 - allows for flipping driver side X-coords
 
 // initialization behavior
 #define rgbrgbinit 
