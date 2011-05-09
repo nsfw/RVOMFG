@@ -188,11 +188,13 @@ void oscDispatch(){
     } else if(!strncasecmp(p,"bright",5)){
         brightness(oscmsg->getFloat(0)); 
     } else if(!strncasecmp(p,"hscroll",7)){
-        hScrollRate=oscmsg->getFloat(0); 
     } else if(!strncasecmp(p,"vscroll",7)){
         vScrollRate=oscmsg->getFloat(0); 
     } else if(!strncasecmp(p,"huescroll",8)){
         hueScrollRate=oscmsg->getFloat(0); 
+    } else if(!strncasecmp(p,"hvscroll",8)){
+        hScrollRate=oscmsg->getFloat(1); 
+        vScrollRate=oscmsg->getFloat(0); 
     } else if(!strncasecmp(p,"fill",4)){
         // fill framebuffer w/ an rgb(float) color
         rgb c;
