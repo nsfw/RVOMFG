@@ -79,18 +79,22 @@ rgb red = {255, 0, 0};
 rgb green = {0, 255, 0};
 rgb blue = {0,0,255};
 
-// scroll rates
+// Setable via OSC
 float hScrollRate=0.0;
 float vScrollRate=0.0;
 float hueScrollRate=0.0;
+int solidMode = 0;
+rgb currentColor={255, 0, 0};
+int displayCurrentColor=0;
 
 // forward reference
-void pf(char *fmt, ... );
+// void pf(char *fmt, ... );
+// PF CONSIDERED HARMFUL! Seems to be bringing in other libs... :?
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(57600);
     Serial.println("Device Start -- ");
-    pf("IP: %d.%d.%d.%d:%d\n", myIp[0], myIp[1], myIp[2], myIp[3], serverPort);
+    // pf("IP: %d.%d.%d.%d:%d\n", myIp[0], myIp[1], myIp[2], myIp[3], serverPort);
 
     int i = 0;
     while (i < STRAND_COUNT) {
@@ -126,7 +130,8 @@ void loop(){
     static int i=0;
     static int dirty=0;
     // wait for an image to come in and then display it!
-    if(osc.available()){
+    // if(osc.available()){
+    while(osc.available()){	// process all prior to displaying
         dirty=1;
         if(noOSC){
             resetDisplay(0);	// get back to a known state if someone is talking to us
@@ -139,7 +144,7 @@ void loop(){
         initFrameBuffer(i++);
         dirty=1;
     }
-    if(dirty || hueScrollRate || vScrollRate || hScrollRate ) sendIMGPara();
+    if(dirty || hueScrollRate || vScrollRate || hScrollRate || displayCurrentColor ) sendIMGPara();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -147,23 +152,36 @@ void loop(){
 ///////////////////////////////////////////////////////////////////////////////
 
 void panelEnable(int p, int enable){
-    pf("panelEnable %d %d\n", p, enable);
+    // pf("panelEnable %d %d\n", p, enable);
 
     int start=0, end=5;
     if(p==1){start=6; end=11;}
 
     for (int i=start; i<=end; i++){
         strandEnabled[i]=enable;
-        pf("setting strand %d to %d\n", i, enable);
+        // pf("setting strand %d to %d\n", i, enable);
     }
 }
 
 
 void oscDispatch(){
     static int resetcount=0;
-     // dispatch LEN is minimum len to compare
+
     char *p = oscmsg->getOSCAddress();
-    p++;	    // assume first char is '/'
+
+    if(*p != '/'){
+        Serial.println("MALFORMED OSC");
+        return;
+    }
+
+    if(debugLevel){
+        Serial.print("osc: ");
+        Serial.println(p);
+    }
+
+    if(!strncasecmp(p,"/1",2)) p+=2;	// skip page number on TouchOSC
+
+    p++;	    // skip leading slash
 
     if(!strncasecmp(p,"screen",6)){
         copyImage();
@@ -203,8 +221,35 @@ void oscDispatch(){
                 img[y][x] = c;
             }
         } else {
-            pf("err: /setyx expects i,i,f,f,f");
+            Serial.println("err: /setyx expects i,i,f,f,f");
         }
+    } else if(!strncasecmp(p,"rgb",3)){
+        // process "/effect/rgb/1..3 [0.0 .. 1.0] messages
+        int i = p[4]-'1';		// 1..3
+        byte *c = (byte*) &currentColor;
+        c[i]=(int) 255*oscmsg->getFloat(0);
+        if(solidMode){			// set whole screen to this color
+            fill(currentColor);
+        } else 
+            displayCurrentColor=10;		// show current color for this many cycles
+    } else if(!strncasecmp(p,"clear",5)){
+        fill(black);
+    } else if(!strncasecmp(p,"solid",5)){
+        solidMode = oscmsg->getFloat(0);
+        Serial.println("Solid Mode");
+        Serial.println(solidMode);
+    } else if(!strncasecmp(p,"grid",4)){
+        // format: grid1/4/1, grid2/5/12
+        // grid1/9/1
+        int pan = (p[4]=='2');
+        int row = 9-(p[6]-'0');	// sends 1-9 (upside down)
+        int col = p[8]-'0';
+        if(p[9]) col = 10 + p[9]-'0';
+        col = col - 1 + pan*15;
+        // Serial.println(p);
+        // Serial.println(row);
+        // Serial.println(col);
+        img[row][col] = currentColor;
     } else if(!strncasecmp(p,"panel",5)){
         // enable or disable a panel
         // /panel panel#, mode
@@ -218,7 +263,7 @@ void oscDispatch(){
         // debug method - set serial data rate! tribit quiettime
         tribit    = oscmsg->getInteger32(0);
         quiettime = oscmsg->getInteger32(1);
-        pf("tribit = %d quiettime = %d", tribit, quiettime);
+        // pf("tribit = %d quiettime = %d", tribit, quiettime);
     } else if(!strncasecmp(p,"debug",5)){
         debugLevel=oscmsg->getInteger32(0);	// set debug level
     } else {
@@ -236,14 +281,14 @@ void copyImage(){
 
     // Inbound Image must at least as big as our measly frame buffer in size
     if(w<IMG_WIDTH || h<IMG_HEIGHT){
-        pf("err: /screen %d, %d SMALLER than %d, %d\n",w,h,IMG_WIDTH,IMG_HEIGHT);
+        Serial.println("Inbound Image must at least as big as our measly frame buffer in size");
         return;
     }
 
     byte *data = (byte*) oscmsg->getBlob(2)->data;
 #ifdef DBG
     if(debugLevel==101){
-        pf("Blob Length: %d\n",oscmsg->getBlob(2)->len);
+        // pf("Blob Length: %d\n",oscmsg->getBlob(2)->len);
         dumpHex(data, "ScreenData:", 4);
     }
 #endif
@@ -257,7 +302,7 @@ void copyImage(){
             d->b = *s++;
             // skip alpha
 #ifdef DBG
-            if(debugLevel>100) pf("[%d][%d]=%d,%d,%d ",y,x,d->r,d->g,d->b);
+            // if(debugLevel>100) pf("[%d][%d]=%d,%d,%d ",y,x,d->r,d->g,d->b);
 #endif
         }
 #ifdef DBG
@@ -414,12 +459,17 @@ void prepOutBuffer(){
     vs+=vScrollRate;
     hue+=hueScrollRate;
 
+    if(displayCurrentColor) --displayCurrentColor;
+
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
             int ny = y+vs;
             int nx = x+hs;
             rgb *s = &img[abs(ny%IMG_HEIGHT)][abs(nx%IMG_WIDTH)];
-            if(hueScrollRate!=0.0){
+            if(displayCurrentColor){
+                // override output w/ current color
+                out[y][x] = currentColor;
+            } else if(hueScrollRate!=0.0) {
                 float hsv[3];
                 converter.rgbToHsv(s->r, s->g, s->b, hsv);
                 converter.hsvToRgb(fabs(fmod(hsv[0]+hue,1.0)), hsv[1], hsv[2], (byte*) &out[y][x]);
@@ -428,6 +478,7 @@ void prepOutBuffer(){
             }
         }
     }
+
 }
 
 void sendIMGPara(){
@@ -576,15 +627,15 @@ void sendFrame(){
 ///////////////////////////////////////////////////////////////////////////////
 // debug utils
 ///////////////////////////////////////////////////////////////////////////////
-#include <stdarg.h>
-void pf(char *fmt, ... ){
-        char tmp[128]; // resulting string limited to 128 chars
-        va_list args;
-        va_start (args, fmt );
-        vsnprintf(tmp, 128, fmt, args);
-        va_end (args);
-        Serial.print(tmp);
-}
+// #include <stdarg.h>
+// void pf(char *fmt, ... ){
+//         char tmp[256]; // resulting string limited to 256 chars
+//         va_list args;
+//         va_start (args, fmt );
+//         vsnprintf(tmp, 256, fmt, args);
+//         va_end (args);
+//         Serial.print(tmp);
+// }
 
 #include <avr/pgmspace.h>
 static void	dumpHex(void * startAddress, char* name, unsigned lines){
@@ -629,3 +680,5 @@ void dumpFrame(byte *buffer){
     Serial.print("frame: ");
     for(byte i = 0; i < 26; i++) Serial.print((int) buffer[i]);
 }
+
+
