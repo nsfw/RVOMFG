@@ -83,6 +83,10 @@ rgb blue = {0,0,255};
 float hScrollRate=0.0;
 float vScrollRate=0.0;
 float hueScrollRate=0.0;
+float hsPos=0;
+float vsPos=0;
+float huePos=0;
+
 int solidMode = 0;
 rgb currentColor={255, 0, 0};
 int displayCurrentColor=0;
@@ -114,7 +118,6 @@ void setup() {
 
     // initFrameBuffer(0);		// put *something* in the frame buffer
     resetDisplay(0);			// put *something* in the frame buffer
-    hueScrollRate=0.005;		// and make it do something while wait for something to do
 
     Serial.print("Initializing Strands");
     sendIMGSerial();		// note: First time since power up, will assign addresses.
@@ -122,6 +125,9 @@ void setup() {
     						// will happen!
     Serial.println(" -- done");
     debugLevel=0;
+
+    hueScrollRate=0.00;		// and make it do something while wait for something to do
+    vScrollRate=0.8;
 }
 
 byte noOSC=1;
@@ -129,8 +135,6 @@ byte noOSC=1;
 void loop(){
     static int i=0;
     static int dirty=0;
-    // wait for an image to come in and then display it!
-    // if(osc.available()){
     while(osc.available()){	// process all prior to displaying
         dirty=1;
         if(noOSC){
@@ -140,10 +144,11 @@ void loop(){
         oscmsg=osc.getMessage();
         oscDispatch();
     }    
-    if(noOSC){	// we're just waking up... do stuff
-        initFrameBuffer(i++);
-        dirty=1;
-    }
+    // just scroll and stuff in the mean time
+    // if(noOSC){	// we're just waking up... do stuff
+    //     initFrameBuffer(i++);
+    //     dirty=1;
+    // }
     if(dirty || hueScrollRate || vScrollRate || hScrollRate || displayCurrentColor ) sendIMGPara();
 }
 
@@ -208,6 +213,8 @@ void oscDispatch(){
         }
     } else if(!strncasecmp(p,"reset",5)){
         resetDisplay(resetcount++);		// back to a known state
+    } else if(!strncasecmp(p,"noScroll",5)){
+        noScroll();						// just kill scroll and reset screen position
     } else if(!strncasecmp(p,"setyx",5)){
         // Just set a single pixel!
         int y, x;
@@ -324,8 +331,10 @@ void initFrameBuffer(int i){
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
             static int z=0;
-            img[y][x]= (z==0)?red:((z==1)?green:blue);
-            z=(++z)%3;
+            z=y%8;
+            img[y][x]= (z==0||z==1)?red:((z==2||z==3)?green:(z==4||z==5)?blue:black);
+//             img[y][x]= (z==0)?red:((z==1)?green:blue);
+//            z=(++z)%3;
         }
     }
 }
@@ -354,11 +363,16 @@ void initFrameBuffer(int i){
 }
 #endif
 
-void resetDisplay(int i){
-    hScrollRate=vScrollRate=hueScrollRate=0.0;
-    initFrameBuffer(i);
+void noScroll(){
+    // stop scroll and reset screen position
+    hScrollRate=vScrollRate=hueScrollRate=0.0;	// rates
+    hsPos=vsPos=huePos=0;	// and positions
 }
 
+void resetDisplay(int i){
+    noScroll();
+    initFrameBuffer(i);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Library
@@ -450,23 +464,21 @@ void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
 
 int row[STRAND_COUNT];	// index of LED to display for each strand
 
+
 void prepOutBuffer(){
     // copy img[][] -> out[][] w/ possible transforms
     // consider adding a "hue scroll" that cycles colors
-    static float hs=0;
-    static float vs=0;
-    static float hue=0;
 
-    hs+=hScrollRate;
-    vs+=vScrollRate;
-    hue+=hueScrollRate;
+    hsPos+=hScrollRate;
+    vsPos+=vScrollRate;
+    huePos+=hueScrollRate;
 
     if(displayCurrentColor) --displayCurrentColor;
 
     for(byte x=0; x<IMG_WIDTH; x++){
         for(byte y=0; y<IMG_HEIGHT; y++){
-            int ny = y+vs;
-            int nx = x+hs;
+            int ny = y+vsPos;
+            int nx = x+hsPos;
             rgb *s = &img[abs(ny%IMG_HEIGHT)][abs(nx%IMG_WIDTH)];
             if(displayCurrentColor){
                 // override output w/ current color
@@ -474,7 +486,7 @@ void prepOutBuffer(){
             } else if(hueScrollRate!=0.0) {
                 float hsv[3];
                 converter.rgbToHsv(s->r, s->g, s->b, hsv);
-                converter.hsvToRgb(fabs(fmod(hsv[0]+hue,1.0)), hsv[1], hsv[2], (byte*) &out[y][x]);
+                converter.hsvToRgb(fabs(fmod(hsv[0]+huePos,1.0)), hsv[1], hsv[2], (byte*) &out[y][x]);
             } else {
                 out[y][x] = *s;
             }
