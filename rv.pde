@@ -26,13 +26,11 @@ Scott -- alcoholiday at gmail
       foreach STRAND:	// x11 times
        makeFrame()		    // encodes data for an LED into a byte buffer
        defferredSendFrame()	// sets bits for serial stream
+         computePortAndMask(pin) // per bit 
          frameSet()/frameClr() // x26 times(26 bits per frame)
-          computePortAndMask(pin) // per bit
 
- Note: making computePortAndMask return immediately halved the time of this
-       function.
-          
- */
+Pulling computePortAndMask out of set/clr functions reduced compuseFrame to 128ms
+*/
  
 
 // Ethernet Support
@@ -166,12 +164,8 @@ void loop(){
         oscmsg=osc.getMessage();
         oscDispatch();
     }    
-    // just scroll and stuff in the mean time
-    // if(noOSC){	// we're just waking up... do stuff
-    //     initFrameBuffer(i++);
-    //     dirty=1;
-    // }
-    if(dirty || hueScrollRate || vScrollRate || hScrollRate || displayCurrentColor ) sendIMGPara();
+    if(dirty || hueScrollRate || vScrollRate || hScrollRate || displayCurrentColor ) 
+        sendIMGPara();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -517,7 +511,7 @@ void prepOutBuffer(){
 
 }
 
-// #define DEBUG_TIMING
+#define DEBUG_TIMING
 
 void displayTimeSince(unsigned long then, char * desc){
 #ifdef DEBUG_TIMING
@@ -530,22 +524,21 @@ void displayTimeSince(unsigned long then, char * desc){
      }
 
 void sendIMGPara(){
+    unsigned long sendIMGParaEntry = millis();
+
     // copy the source frame buffer to the output frame buffer
     // may do things like scroll image and such...
-    unsigned long prepOutTime = millis();
-    prepOutBuffer();
-    displayTimeSince(prepOutTime, "prepOutBuffer");
-    // walk the strand length 
-    unsigned long composeFrameTime = millis();
+    prepOutBuffer();	// ~18ms
+    displayTimeSince(sendIMGParaEntry, "prepOutBuffer");
 
-    // Taking >300ms on Arduino Mega 2560
+    // walk the strand length ~230ms
     for(byte i=0; i < MAX_STRAND_LEN; i++ ){
         // compute what index each strand should send
         for( byte j=0; j < STRAND_COUNT; j++)
             row[j] = (i < strands[j].len )? i: -1;
         composeFrame();
     }
-    displayTimeSince(composeFrameTime, "composeFrame");
+    displayTimeSince(sendIMGParaEntry, "sendIMGPara");
 }
 
 void setGlobalIntensity(byte val){
@@ -588,7 +581,9 @@ void togglePin(byte pin){
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Deferred I/O
+// Deferred I/O storage
+// 
+// Add more portXstuff here as you need more bits
 ///////////////////////////////////////////////////////////////////////////////
 #define FRAMESIZE (2+(26*3))
 // pins 22-29
@@ -613,8 +608,7 @@ void computePortAndMask(byte pin){
     }
 }
 
-void frameSet(byte slice, byte pin){
-    computePortAndMask(pin);
+void frameSet(byte slice){
     switch(port){
     case 'a':
         portAframe[slice] |= pinmask; break;
@@ -623,8 +617,7 @@ void frameSet(byte slice, byte pin){
     }
 }
 
-void frameClr(byte slice, byte pin){
-    computePortAndMask(pin);
+void frameClr(byte slice){
     switch(port){
     case 'a':
         portAframe[slice] &= ~pinmask; break;
@@ -658,32 +651,29 @@ void composeFrame(){
         }
     }
     // displayTimeSince(composeLoop,"composeLoop");
-
-    #ifdef DEBUG_TIMING
-    Serial.print("=====\n");
-    #endif
-
-    unsigned long sendFrameTime = millis();
+    // unsigned long sendFrameTime = millis();
     sendFrame();
     // displayTimeSince(sendFrameTime, "sendFrame");
 }
 
 void deferredSendFrame(byte pin, byte *buffer){
-    byte slice = 0;
     // buffer is 26bit frame
-    frameSet(slice++,pin);	// start bit
+    byte slice = 0;
+    computePortAndMask(pin);	// sets globals "port" and "pinmask" for this pin
+                                // used by frameSet & frameClr
+    frameSet(slice++);	// start bit
     for(byte i=0; i<26; i++){
         if(buffer[i]){	// send a 1 : L L H
-            frameClr(slice++, pin);
-            frameClr(slice++, pin);
-            frameSet(slice++, pin);
+            frameClr(slice++);
+            frameClr(slice++);
+            frameSet(slice++);
         } else {		// send a 0: L H H
-            frameClr(slice++, pin);
-            frameSet(slice++, pin);
-            frameSet(slice++, pin);
+            frameClr(slice++);
+            frameSet(slice++);
+            frameSet(slice++);
         }
     }
-    frameClr(slice++,pin);	// back to LOW inter frame
+    frameClr(slice++);	// back to LOW inter frame
 }
 
 void sendFrame(){
