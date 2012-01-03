@@ -14,6 +14,27 @@ All LEDs are updated each frame, in strand/index order.
 Scott -- alcoholiday at gmail
 */
 
+/* Perfomance Issues and Improvements -
+
+   Much of the time is taken in the CPU BOUND composeFrame function,
+   which is called once per LED on the longest strand. It can
+   definately use some optimization.
+
+   sendIMGPara()
+    foreach LED:		// x36 times
+     composeFrame()
+      foreach STRAND:	// x11 times
+       makeFrame()		    // encodes data for an LED into a byte buffer
+       defferredSendFrame()	// sets bits for serial stream
+         frameSet()/frameClr() // x26 times(26 bits per frame)
+          computePortAndMask(pin) // per bit
+
+ Note: making computePortAndMask return immediately halved the time of this
+       function.
+          
+ */
+ 
+
 // Ethernet Support
 #include <SPI.h>
 #include <Client.h>
@@ -106,9 +127,10 @@ void setup() {
         pinMode(strands[i].pin, OUTPUT);
         digitalWrite(strands[i].pin, LOW);
         Serial.print("Configured strand ");
-        Serial.print(i);
+        Serial.print(i, DEC);
         Serial.print(" on output pin ");
-        Serial.println(strands[i].pin);
+        Serial.print(strands[i].pin, DEC);
+        Serial.print("\n");
         i++;
     }
     Serial.println("Output Pins Configured");
@@ -495,17 +517,35 @@ void prepOutBuffer(){
 
 }
 
+// #define DEBUG_TIMING
+
+void displayTimeSince(unsigned long then, char * desc){
+#ifdef DEBUG_TIMING
+     unsigned long diff = millis() - then;
+     Serial.print(desc);
+     Serial.print(": ");
+     Serial.print(diff);
+     Serial.print("ms\n");
+#endif
+     }
+
 void sendIMGPara(){
     // copy the source frame buffer to the output frame buffer
     // may do things like scroll image and such...
+    unsigned long prepOutTime = millis();
     prepOutBuffer();
+    displayTimeSince(prepOutTime, "prepOutBuffer");
     // walk the strand length 
+    unsigned long composeFrameTime = millis();
+
+    // Taking >300ms on Arduino Mega 2560
     for(byte i=0; i < MAX_STRAND_LEN; i++ ){
         // compute what index each strand should send
         for( byte j=0; j < STRAND_COUNT; j++)
             row[j] = (i < strands[j].len )? i: -1;
         composeFrame();
     }
+    displayTimeSince(composeFrameTime, "composeFrame");
 }
 
 void setGlobalIntensity(byte val){
@@ -561,7 +601,7 @@ byte portCmask=0;
 char port=0;	// 'a', 'c', etc.
 byte pinmask;	// pin as bit mask (e.g. 22 = 0x01, 23 = 0x02...)
 
-char computePortAndMask(byte pin){
+void computePortAndMask(byte pin){
     if(22 <= pin && pin <= 30){
         port = 'a';
         pinmask = (1<<(pin-22));
@@ -594,20 +634,38 @@ void frameClr(byte slice, byte pin){
 }
 
 void composeFrame(){
-    // take your time and figure out what you want to say!
+    // Compose bit pattern to send for a particular LED across all active strands
+
+    // TIMING ANALYSIS: This is once per MAX LED on Strand (~36 times
+    // for an image on RV) ComposeLoop takes ~7 ms, sendFrame takes
+    // ~1ms, 8*36 = 288ms or less than 4fps!
+    
     byte buffer[26];
     // collect bit streams for ALL strands
+    unsigned long composeLoop = millis();
     for (byte s=0; s<STRAND_COUNT; s++){
         int index = row[s];
         if ((index != -1) && (strandEnabled[s]!=0)){
             byte x = strands[s].x[index];
             byte y = strands[s].y[index];
             rgb *pix = &out[y][x];
+            // unsigned long makeFrameTime = millis();
             makeFrame(index, pix->r, pix->g, pix->b, imgBright, buffer);
+            // displayTimeSince(makeFrameTime,"makeFrame");
+            // unsigned long defferedSendFrameTime = millis();
             deferredSendFrame(strands[s].pin, buffer);
+            // displayTimeSince(defferedSendFrameTime, "defferedSendFrame");
         }
     }
+    // displayTimeSince(composeLoop,"composeLoop");
+
+    #ifdef DEBUG_TIMING
+    Serial.print("=====\n");
+    #endif
+
+    unsigned long sendFrameTime = millis();
     sendFrame();
+    // displayTimeSince(sendFrameTime, "sendFrame");
 }
 
 void deferredSendFrame(byte pin, byte *buffer){
