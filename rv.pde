@@ -16,20 +16,17 @@ Scott -- alcoholiday at gmail
 
 /* Perfomance Issues and Improvements -
 
-   Much of the time is taken in the CPU BOUND composeFrame function,
+   Much of the time is taken in the CPU BOUND composeAndSendFrame function,
    which is called once per LED on the longest strand. It can
    definately use some optimization.
 
    sendIMGPara()
-    foreach LED:		// x36 times
-     composeFrame()
-      foreach STRAND:	// x11 times
-       makeFrame()		    // encodes data for an LED into a byte buffer
-       defferredSendFrame()	// sets bits for serial stream
-         computePortAndMask(pin) // per bit 
-         frameSet()/frameClr() // x26 times(26 bits per frame)
-
-Pulling computePortAndMask out of set/clr functions reduced compuseFrame to 128ms
+    foreach LED per strand:	// x36 times
+     foreach STRAND:		// x11 times
+      composeAndSendFrame()
+         makeFrame()		    // encodes data for an LED into a byte buffer
+         defferredSendFrame()	// sets bits for serial stream
+       sendFrame       
 */
  
 
@@ -46,6 +43,7 @@ RGBConverter converter;
 
 // debug 
 #define DBG	// conditional DBG code compiled in - small speed penalty
+#define DEBUG_TIMING	// may cause significant serial traffic
 
 // remotely settable -- e.g.  osc("/debug",100)
 byte debugLevel = 0;	// debugLevel > 100 will print each pixel as sent via /screen
@@ -136,13 +134,15 @@ void setup() {
     Ethernet.begin(myMac ,myIp); 
     osc.sockOpen(serverPort);
 
-    // initFrameBuffer(0);		// put *something* in the frame buffer
     resetDisplay(0);			// put *something* in the frame buffer
 
     Serial.print("Initializing Strands");
-    sendIMGSerial();		// note: First time since power up, will assign addresses.
-    						// If image buffer doesn't match strand config, interesting things
-    						// will happen!
+
+    // note: First time since power up, will assign addresses.
+    // If image buffer doesn't match strand config, interesting things
+    // will happen!
+    sendIMGSerial();
+
     Serial.println(" -- done");
     debugLevel=0;
 
@@ -173,7 +173,8 @@ void loop(){
 ///////////////////////////////////////////////////////////////////////////////
 
 void panelEnable(int p, int enable){
-    // pf("panelEnable %d %d\n", p, enable);
+    // consider losing this, we never use it - turns off one side
+    // or the other of the RV.
 
     int start=0, end=5;
     if(p==1){start=6; end=11;}
@@ -403,7 +404,6 @@ void fill(struct rgb c){
     }
 }
 
-
 byte imgBright=MAX_INTENSITY;
 float bright=1.0;
 
@@ -480,7 +480,6 @@ void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
 
 int row[STRAND_COUNT];	// index of LED to display for each strand
 
-
 void prepOutBuffer(){
     // copy img[][] -> out[][] w/ possible transforms
     // consider adding a "hue scroll" that cycles colors
@@ -511,7 +510,6 @@ void prepOutBuffer(){
 
 }
 
-#define DEBUG_TIMING
 
 void displayTimeSince(unsigned long then, char * desc){
 #ifdef DEBUG_TIMING
@@ -536,7 +534,7 @@ void sendIMGPara(){
         // compute what index each strand should send
         for( byte j=0; j < STRAND_COUNT; j++)
             row[j] = (i < strands[j].len )? i: -1;
-        composeFrame();
+        composeAndSendFrame();
     }
     displayTimeSince(sendIMGParaEntry, "sendIMGPara");
 }
@@ -586,55 +584,43 @@ void togglePin(byte pin){
 // Add more portXstuff here as you need more bits
 ///////////////////////////////////////////////////////////////////////////////
 #define FRAMESIZE (2+(26*3))
-// pins 22-29
+
+// pins 22-29 PORTA
 byte portAframe[FRAMESIZE];	// start and stop frome + 26 bits 
 byte portAmask=0;			// remember what pins are being set
-// pins 30-37 
+
+// pins 30-37 PORTC
 byte portCframe[FRAMESIZE];	
 byte portCmask=0;			
 
-char port=0;	// 'a', 'c', etc.
-byte pinmask;	// pin as bit mask (e.g. 22 = 0x01, 23 = 0x02...)
+// note: pinmask, portXmask and buffers for each port can be precomputed
+// and this function not used at send time
+// For KELP turn this into a look up table
 
-void computePortAndMask(byte pin){
-    if(22 <= pin && pin <= 30){
-        port = 'a';
+byte * getBufferAndMask(byte pin, byte &pinmask){
+    if(22 <= pin && pin <= 30){	// PORTA
         pinmask = (1<<(pin-22));
         portAmask |= pinmask;	// remember we're using this output pin
+        return portAframe;
     } else if(30 <= pin && pin <= 38){
-        port = 'c';
         pinmask = (0x80>>(pin-30));	// bit 0 = pin 37
         portCmask |= pinmask;	// remember we're using this output pin
+        return portCframe;
     }
 }
 
-void frameSet(byte slice){
-    switch(port){
-    case 'a':
-        portAframe[slice] |= pinmask; break;
-    case 'c':
-        portCframe[slice] |= pinmask; break;
-    }
-}
-
-void frameClr(byte slice){
-    switch(port){
-    case 'a':
-        portAframe[slice] &= ~pinmask; break;
-    case 'c':
-        portCframe[slice] &= ~pinmask; break;
-    }
-}
-
-void composeFrame(){
+void composeAndSendFrame(){
     // Compose bit pattern to send for a particular LED across all active strands
+    // and then send it in one bollus
 
-    // TIMING ANALYSIS: This is once per MAX LED on Strand (~36 times
-    // for an image on RV) ComposeLoop takes ~7 ms, sendFrame takes
-    // ~1ms, 8*36 = 288ms or less than 4fps!
+    // TIMING ANALYSIS: This is once per MAX LED per Strand (~36 times
+    // for an image on RV)
+    // This is where we're spending most of our time, and have been in the <4fps
+    // range... should be in the ~10fps range now.
     
     byte buffer[26];
-    // collect bit streams for ALL strands
+
+    // Accumulate bit streams for ALL strands in portAframe[], portCframe[], etc...
     unsigned long composeLoop = millis();
     for (byte s=0; s<STRAND_COUNT; s++){
         int index = row[s];
@@ -652,32 +638,42 @@ void composeFrame(){
     }
     // displayTimeSince(composeLoop,"composeLoop");
     // unsigned long sendFrameTime = millis();
+
+    // sends accumulated bitstreams out at max serial rate
     sendFrame();
+
     // displayTimeSince(sendFrameTime, "sendFrame");
 }
 
-void deferredSendFrame(byte pin, byte *buffer){
-    // buffer is 26bit frame
-    byte slice = 0;
-    computePortAndMask(pin);	// sets globals "port" and "pinmask" for this pin
-                                // used by frameSet & frameClr
-    frameSet(slice++);	// start bit
+#define sliceSet(s) *s |= pinmask;
+#define sliceClr(s) *s &= ~pinmask;
+
+void deferredSendFrame(byte pin, byte *bitbuffer){
+    // toggle associated bit in associated port buffer array based on data in
+    // bitbuffer, representing the 26bit pattern to send on this pin
+
+    byte pinmask;
+
+    // points at appropriate buffer for this pin and sets pinmask
+    byte *slicePtr = getBufferAndMask(pin, pinmask);
+
+    sliceSet(slicePtr++);	// start bit
     for(byte i=0; i<26; i++){
-        if(buffer[i]){	// send a 1 : L L H
-            frameClr(slice++);
-            frameClr(slice++);
-            frameSet(slice++);
-        } else {		// send a 0: L H H
-            frameClr(slice++);
-            frameSet(slice++);
-            frameSet(slice++);
+        if(bitbuffer[i]){	// send a 1 : L L H
+            sliceClr(slicePtr++);
+            sliceClr(slicePtr++);
+            sliceSet(slicePtr++);
+        } else {			// send a 0: L H H
+            sliceClr(slicePtr++);
+            sliceSet(slicePtr++);
+            sliceSet(slicePtr++);
         }
     }
-    frameClr(slice++);	// back to LOW inter frame
+    sliceClr(slicePtr++);	// back to LOW inter frame
 }
 
 void sendFrame(){
-    // Say it in one precise parallel blast
+    // Say it in one precise parallel blast for all strands
     for(byte i = 0; i<FRAMESIZE; i++){
         PORTA = (PORTA & ~portAmask) | (portAframe[i] & portAmask);	// selectively set bits
         PORTC = (PORTC & ~portCmask) | (portCframe[i] & portCmask);	// selectively set bits
