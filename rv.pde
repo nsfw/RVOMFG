@@ -29,6 +29,7 @@ Scott -- alcoholiday at gmail
        sendFrame       
 */
  
+#include <string.h>
 
 // Ethernet Support
 #include <SPI.h>
@@ -153,6 +154,7 @@ void setup() {
 byte noOSC=1;
 
 void loop(){
+    Serial.println("In loop()");
     static int i=0;
     static int dirty=0;
     while(osc.available()){	// process all prior to displaying
@@ -452,30 +454,30 @@ void makeFrame(byte index, byte r, byte g, byte b, byte i, byte *buffer){
             bitPos = 6;
             data = index;
             break;
-      case 6:
-        bitPos = 8;
-        data = i;	
-        break;
-      case 14:
-        bitPos = 4;
-        data = b>>4;
-        break;
-      case 18:
-        bitPos = 4;
-        data = g>>4;
-        break;
-      case 22:
-        bitPos = 4;
-        data = r>>4;
-        break;
-      default:
-        break;
-    } 
-
-    buffer[bufferPos] = ( (data & (1 << (bitPos - 1))) != 0) ? 1:0;
-    bitPos--;
-    bufferPos++;
-  }
+        case 6:
+            bitPos = 8;
+            data = i;	
+            break;
+        case 14:
+            bitPos = 4;
+            data = b>>4;
+            break;
+        case 18:
+            bitPos = 4;
+            data = g>>4;
+            break;
+        case 22:
+            bitPos = 4;
+            data = r>>4;
+            break;
+        default:
+            break;
+        } 
+        
+        buffer[bufferPos] = ( (data & (1 << (bitPos - 1))) != 0) ? 1:0;
+        bitPos--;
+        bufferPos++;
+    }
 }
 
 int row[STRAND_COUNT];	// index of LED to display for each strand
@@ -695,7 +697,7 @@ void sendFrame(){
 //         Serial.print(tmp);
 // }
 
-#include <avr/pgmspace.h>
+// #include <avr/pgmspace.h>
 static void	dumpHex(void * startAddress, char* name, unsigned lines){
     int				ii;
     int				theValue;
