@@ -12,8 +12,11 @@
 #ifndef RGBConverter_h
 #define RGBConverter_h
 
-/* #include "WProgram.h" - pre Arduino 1.0 */
-#include "Arduino.h"	/* post Arduino 1.0 */
+#if ARDUINO>=100
+#include <Arduino.h>	// Arduino 1.0
+#else
+#include <Wprogram.h>	// Arduino 0022
+#endif
 
 #define threeway_max(a, b, c) max(a, max(b, c))
 #define threeway_min(a, b, c) min(a, min(b, c))

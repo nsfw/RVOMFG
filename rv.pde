@@ -44,7 +44,7 @@ RGBConverter converter;
 
 // debug 
 #define DBG	// conditional DBG code compiled in - small speed penalty
-#define DEBUG_TIMING	// may cause significant serial traffic
+// #define DEBUG_TIMING	// may cause significant serial traffic
 
 // remotely settable -- e.g.  osc("/debug",100)
 byte debugLevel = 0;	// debugLevel > 100 will print each pixel as sent via /screen
@@ -154,7 +154,6 @@ void setup() {
 byte noOSC=1;
 
 void loop(){
-    Serial.println("In loop()");
     static int i=0;
     static int dirty=0;
     while(osc.available()){	// process all prior to displaying
@@ -166,8 +165,12 @@ void loop(){
         oscmsg=osc.getMessage();
         oscDispatch();
     }    
-    if(dirty || hueScrollRate || vScrollRate || hScrollRate || displayCurrentColor ) 
+    if(dirty || hueScrollRate || vScrollRate || hScrollRate || displayCurrentColor ){
         sendIMGPara();
+//        Serial.print("+");
+    } else {
+//        Serial.print(".");
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
