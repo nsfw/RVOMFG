@@ -54,10 +54,6 @@ byte debugLevel = 0;	// debugLevel > 100 will print each pixel as sent via /scre
 ///////////////////////////////////////////////////////////////////////////////
 // #include "conf1led.h"	// 1 LED useful for debugging
 // Remember - we're talking ROWS and COLUMNS
-// #include "conf9x10.h"		// initial two strings on RV
-// #include "test9x10.h"		// concentric circles
-// #include "conf4x2.h"		// 4x2 matrix
-// #include "confRV0.h"		// RV v0
 
 #define FLIP_DRIVER_SIDE	// make text go left to right
 #include "confRV1.h"		// RV v1 - allows for flipping driver side X-coords
@@ -121,8 +117,8 @@ void setup() {
     int i = 0;
     while (i < STRAND_COUNT) {
         strandEnabled[i]=1;
+        digitalWrite(strands[i].pin, LOW);	// set low, then enable
         pinMode(strands[i].pin, OUTPUT);
-        digitalWrite(strands[i].pin, LOW);
         Serial.print("Configured strand ");
         Serial.print(i, DEC);
         Serial.print(" on output pin ");
@@ -142,7 +138,8 @@ void setup() {
     // note: First time since power up, will assign addresses.
     // If image buffer doesn't match strand config, interesting things
     // will happen!
-    sendIMGSerial();
+    delay(1000);				// quiet time 
+    sendIMGPara();
 
     Serial.println(" -- done");
     debugLevel=0;
@@ -354,7 +351,7 @@ void initFrameBuffer(int i){
         for(byte y=0; y<IMG_HEIGHT; y++){
             static int z=0;
             z=y%8;
-            img[y][x]= (z==0||z==1)?red:((z==2||z==3)?green:(z==4||z==5)?blue:black);
+            img[y][x]= (z==0||z==1)?red:((z==2||z==3)?green:(z==4||z==5)?blue:white);
 //             img[y][x]= (z==0)?red:((z==1)?green:blue);
 //            z=(++z)%3;
         }
@@ -417,26 +414,6 @@ void brightness(float b){
     bright = max(0.0, bright);
     bright = min(1.0, bright);
     imgBright = (float)MAX_INTENSITY*bright;
-}
-
-
-// think we can switch to the parallell version now...
-
-void sendIMGSerial() {
-    // for all strands, one strand at a time
-    // Also useful for initial addressing
-    // NOTE: uses img[][] directly instead of out[][]
-    for (byte i=0; i<STRAND_COUNT; i++){
-        strand *s = &strands[i];
-        for(byte index=0; index<s->len; index++){
-            // for all leds on strand
-            byte x = s->x[index];
-            byte y = s->y[index];
-            rgb *pix = &img[y][x];
-
-            sendSingleLED(index, s->pin, pix->r, pix->g, pix->b, imgBright);
-        }
-    }
 }
 
 void sendSingleLED(byte address, int pin, byte r, byte g, byte b, byte i) {
